@@ -1,0 +1,1432 @@
+<!-- public/index.html -->
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="apple-touch-icon" href="/favicon.svg"/>
+  <title>問診シミュレーター</title>
+  <style>
+    :root{
+      --bg:#fef1f7; --card:#fff; --line:#fce7f3; --text:#111827; --muted:#9ca3af;
+      --primary:#ec4899; --ok:#10b981; --err:#f472b6; --warn:#fbbf24; --press:#db2777;
+    }
+    *{ box-sizing:border-box }
+    body{ margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP",sans-serif; background:var(--bg); color:var(--text); }
+    header{
+      background: linear-gradient(90deg,#ec4899,#f472b6);
+      color:#fff; padding:14px 18px; display:flex; align-items:center; gap:10px;
+      border-bottom:1px solid rgba(255,255,255,.2);
+    }
+    body.immersive header{ display:none }
+    header .brand{ font-weight:800; font-size:18px; display:flex; align-items:center; gap:8px }
+    header .right{ margin-left:auto; color:#e5e7eb; font-size:13px; display:flex; align-items:center; gap:8px; }
+    header .right .uname{ font-weight:700; color:#fff }
+    header .right .secondary{ background:#fce7f3; color:#9f1239; padding:6px 10px; border-radius:10px; }
+
+    .container{ max-width:1280px; margin:16px auto; padding:0 16px; }
+    .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    h3{ margin:0 0 12px; }
+
+    .screen{ display:none } 
+    .screen.active{ display:block }
+
+    .menu-grid{ display:flex; flex-direction:column; gap:12px; }
+    .menu-card{
+      background:#fff;
+      border:1px solid #fce7f3;
+      border-radius:8px;
+      padding:14px 16px;
+      cursor:pointer;
+      transition:all .15s ease;
+      position:relative;
+      overflow:hidden;
+    }
+    .menu-card::after{
+      content:'🌸';
+      position:absolute;
+      right:-10px;
+      bottom:-10px;
+      font-size:80px;
+      opacity:0.04;
+      pointer-events:none;
+      line-height:1;
+    }
+    .menu-card:hover{
+      border-color:#ec4899;
+      background:#fdf2f8;
+    }
+    .menu-card:active{ transform: scale(0.98); }
+    .menu-card-title{
+      font-size: 15px;
+      font-weight: 600;
+      color:#374151;
+      margin-bottom: 4px;
+    }
+    .menu-card:hover .menu-card-title{ color:#ec4899; }
+    .muted{ color:var(--muted) } .small{ font-size:12px }
+    .mono{ font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px }
+
+    .grid{ display:grid; gap:12px; grid-template-columns: repeat(12, 1fr); }
+    .col-3{ grid-column: span 3 } .col-12{ grid-column: span 12 }
+    @media (max-width:960px){
+      .col-3{ grid-column: span 12 }
+      .home-layout{ grid-template-columns: 1fr !important; }
+    }
+    label{ display:flex; flex-direction:column; gap:6px; font-size:13px; color:#374151 }
+    input[type="text"], select, textarea{
+      width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:#fff; font-size:14px;
+    }
+    textarea{ min-height:96px; resize:vertical }
+
+    button{
+      appearance:none; border:0; background:var(--primary); color:#fff; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:600; transition:background .12s ease, transform .05s ease, filter .12s ease;
+    }
+    button.secondary{
+      background:#fce7f3; color:#9f1239;
+    }
+    button:active{ transform: translateY(1px); filter: brightness(.95); }
+    button[disabled]{ opacity:.55; cursor:not-allowed }
+
+    .scenario-grid{ display:grid; gap:12px; grid-template-columns: repeat(4, 1fr); }
+    @media (max-width:960px){ .scenario-grid{ grid-template-columns: repeat(2, 1fr); } }
+    .scenario-card{
+      background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px; cursor:pointer;
+      display:flex; flex-direction:column; align-items:center; gap:8px; transition:.12s ease;
+    }
+    .scenario-card .emoji{ font-size:22px }
+    .scenario-card.selected{
+      outline:2px solid #ec4899;
+      background:#fbcfe8;
+      border-color:#ec4899;
+    }
+    .scenario-card:active{ transform: translateY(1px); filter:brightness(.98); }
+
+    /* 患者選択画面: 2カラムレイアウト */
+    .patient-select-layout{ display:flex; gap:16px; min-height:500px }
+    .patient-list-col{ flex:0 0 320px; display:flex; flex-direction:column; }
+    .patient-detail-col{ flex:1; display:flex; flex-direction:column; }
+    .patient-list{ 
+      border:1px solid var(--line); border-radius:10px; background:#fff; 
+      overflow-y:auto; max-height:500px; padding:8px;
+    }
+    .patient-item{
+      padding:12px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px;
+      cursor:pointer; transition:.12s ease; background:#fff;
+    }
+    .patient-item:hover{ background:#fdf2f8 }
+    .patient-item.selected{ outline:2px solid #ec4899; background:#fbcfe8; }
+    .patient-item .name{ font-weight:700; font-size:14px; margin-bottom:4px }
+    .patient-item .meta{ font-size:12px; color:var(--muted) }
+    .patient-detail{
+      border:1px solid var(--line); border-radius:10px; background:#fff; padding:16px;
+      overflow-y:auto; flex:1;
+    }
+    .patient-detail .section{ margin-bottom:16px }
+    .patient-detail .section-title{ font-weight:700; font-size:14px; margin-bottom:8px; color:#374151; border-left:3px solid #ec4899; padding-left:8px }
+    .patient-detail .section-content{ font-size:13px; line-height:1.7; color:#4b5563; white-space:pre-wrap; background:#f9fafb; padding:10px; border-radius:6px }
+    @media (max-width:960px){ 
+      .patient-select-layout{ flex-direction:column }
+      .patient-list-col{ flex:0 0 auto }
+      .patient-list{ max-height:300px }
+    }
+
+    .stage{ position:fixed; inset:0; background:#000; display:flex; flex-direction:column; }
+    .video-wrap{ position:relative; flex: 1; width:100%; height:100%; overflow:hidden; }
+    .talk-video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000; }
+    .pill{ position:absolute; top:16px; left:16px; background:rgba(255,255,255,.98); color:#111827; font-weight:800; font-size:16px; padding:10px 14px; border-radius:999px; box-shadow:0 6px 14px rgba(0,0,0,.15) }
+    .bottom-bar{ position:absolute; left:0; right:0; bottom:0; padding:12px; display:flex; flex-direction:column; gap:8px; background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.22)); padding-bottom:16px; }
+    .btn-eval{ background:#ec4899; border-radius:999px; padding:12px 18px; font-weight:800; line-height:1; }
+    .btn-eval:active{ background:var(--press) }
+    .progress{ position:relative; left:0; right:0; height:6px; border-radius:999px; background:rgba(255,255,255,.35); overflow:hidden; order: 2; }
+    .progress > i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#ec4899,#f9a8d4); transition: width .2s ease }
+
+    .report-note{ color:#6b7280; font-size:12px; margin:4px 0 8px }
+    .tbl{ width:100%; border-collapse:collapse; border:1px solid #e5e7eb; font-size:14px; }
+    .tbl th{ background:#f9fafb; color:#111827; border:1px solid #e5e7eb; padding:8px; }
+    .tbl td{ border:1px solid #e5e7eb; padding:8px; vertical-align:top }
+    .seg{ margin-top:14px } .seg .title{ font-weight:700; margin-bottom:6px; color:#111827 }
+    .seg .box{ border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; background:#fff; white-space:pre-wrap; line-height:1.7 }
+    .callout{ border:1px solid #fde68a; background:#fff7ed; color:#7c2d12; padding:10px 12px; border-radius:10px; margin:8px 0 }
+    .chatlog{ border:1px solid #e5e7eb; border-radius:8px; background:#fff; padding:10px 12px; max-height:360px; overflow:auto }
+    .line{ margin:6px 0; display:flex; gap:8px; align-items:flex-start }
+    .badge{ border-radius:6px; padding:2px 6px; font-size:12px; color:#fff; min-width:56px; text-align:center }
+    .badge-nurse{ background:#0f766e } .badge-patient{ background:#7c3aed }
+
+    .admin-wrap{ display:flex; gap:16px; min-height:520px }
+    .admin-nav{
+      width:220px; border:1px solid var(--line); border-radius:14px;
+      background:linear-gradient(180deg, #fff 0%, #fff8fb 100%);
+      padding:16px; height:fit-content;
+      box-shadow: 0 2px 8px rgba(236, 72, 153, 0.08);
+    }
+    .admin-nav button{
+      width:100%; background:#fff; color:#9f1239; margin:6px 0;
+      border:1px solid #fce7f3; text-align:left; padding:10px 12px;
+      font-size:14px;
+    }
+    .admin-nav button:hover{
+      background:#fdf2f8; border-color:#ec4899;
+    }
+    .admin-content{ flex:1; }
+    .muted-box{ background:#f3f4f6; padding:8px; border-radius:10px; }
+
+    .version-badge{
+      position:fixed; right:12px; bottom:12px; z-index:50;
+      background:#111827; color:#fff; font-size:12px; line-height:1;
+      padding:6px 10px; border-radius:999px; opacity:.85;
+    }
+
+    .practice-actions{
+      display:flex; justify-content:center; align-items:center; gap:8px; margin-top:20px;
+    }
+    .practice-actions .start{ width: 12rem; }
+
+    .back-to-menu{
+      position: fixed;
+      top: 60px;
+      right: 16px;
+      z-index: 100;
+      padding: 6px 12px;
+      font-size: 12px;
+      min-width: auto;
+      background: #fce7f3;
+      color: #9f1239;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+    .back-to-menu:hover{
+      background: #fbcfe8;
+    }
+
+    .nowrap{ white-space:nowrap; }
+
+    .fab-br{
+      position: fixed; right: 16px; bottom: 16px; z-index: 60;
+      box-shadow: 0 6px 16px rgba(0,0,0,.15);
+    }
+
+    .history-item:hover{
+      outline: 2px solid #fbcfe8;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,.08);
+    }
+
+    /* 統合ステータスパネル - 右側固定 */
+    #statusPanel{
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 320px;
+      height: 100vh;
+      background: #2d3748;
+      color: #e2e8f0;
+      z-index: 150;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      overflow-y: auto;
+      box-shadow: -4px 0 12px rgba(0,0,0,0.3);
+      font-size: 13px;
+    }
+    #statusPanel.visible{
+      transform: translateX(0);
+    }
+    /* 評価画面では完全に非表示 */
+    .screen#screen-result ~ #statusPanel,
+    body:has(#screen-result.active) #statusPanel{
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+    }
+    /* 評価画面ではフローティングパネルも非表示 */
+    body:has(#screen-result.active) #floatingPanels{
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+    }
+    body:has(#screen-result.active) #toggleStatusBtn{
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+    }
+    #statusPanel::-webkit-scrollbar{
+      width: 6px;
+    }
+    #statusPanel::-webkit-scrollbar-track{
+      background: #1a202c;
+    }
+    #statusPanel::-webkit-scrollbar-thumb{
+      background: #4a5568;
+      border-radius: 3px;
+    }
+    .status-header{
+      background: #1a202c;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #4a5568;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .status-title{
+      font-weight: 700;
+      font-size: 14px;
+      color: #fff;
+    }
+    .status-toggle{
+      background: #4a5568;
+      color: #fff;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .status-toggle:hover{
+      background: #718096;
+    }
+    .status-section{
+      padding: 16px;
+      border-bottom: 1px solid #4a5568;
+    }
+    .status-section:last-child{
+      border-bottom: none;
+    }
+    .status-section-title{
+      font-weight: 700;
+      font-size: 12px;
+      color: #a0aec0;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      letter-spacing: 0.05em;
+    }
+    .status-item{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      margin: 6px 12px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px;
+      border: none;
+      transition: all 0.2s ease;
+    }
+    .status-item:hover{
+      background: rgba(255,255,255,0.08);
+      transform: translateX(-2px);
+    }
+    
+    /* 独立した帯パネル（体温、血圧などが個別に表示） - v1.88 */
+    .independent-strip{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 16px !important;
+      margin: 6px 12px !important;
+      background: rgba(255,255,255,0.06) !important;
+      border-radius: 4px !important;
+      border-left: none !important;
+      border: none !important;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1) !important;
+    }
+    .independent-strip.vital-strip{
+      border-left: none !important;
+      border: none !important;
+    }
+    .independent-strip.exam-strip{
+      border-left: none !important;
+      border: none !important;
+    }
+    .vital-panel, .exam-panel{
+      border-left: none !important;
+      border: none !important;
+    }
+    .independent-strip:hover{
+      background: rgba(255,255,255,0.1);
+      transform: translateX(-3px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.25);
+    }
+    .strip-label{
+      color: #cbd5e0;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+    .strip-value{
+      font-weight: 600;
+      font-size: 14px;
+      color: #fff;
+    }
+    .strip-value.abnormal{
+      color: #fc8181;
+    }
+    .strip-value.normal{
+      color: #68d391;
+    }
+    .status-label{
+      color: #cbd5e0;
+      font-size: 12px;
+    }
+    .status-value{
+      font-weight: 600;
+      color: #fff;
+    }
+    .status-value.abnormal{
+      color: #fc8181;
+    }
+    .status-value.normal{
+      color: #68d391;
+    }
+    .status-empty{
+      color: #718096;
+    }
+    
+    /* 音声再生プレーヤーのシンプルな配置 */
+    #rsAudioPlayer {
+      margin: 16px 0;
+      position: relative;
+      z-index: 200;
+      pointer-events: auto;
+    }
+    #rsAudioPlayer audio {
+      display: block;
+      width: 100%;
+      max-width: 500px;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    .status-checked{
+      text-align: center;
+      padding: 16px;
+      color: #68d391;
+    }
+    .toggle-status-btn{
+      position: fixed;
+      top: 70px;
+      right: 16px;
+      z-index: 140;
+      background: #2d3748;
+      color: #fff;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .toggle-status-btn:hover{
+      background: #4a5568;
+    }
+
+    /* Scenario configuration */
+    .keyword-config-item {
+      margin-bottom: 16px;
+    }
+    .keyword-config-item label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: #374151;
+    }
+    
+    /* 浮遊パネル（体温、血圧など個別表示） */
+    #floatingPanels{
+      position: fixed;
+      top: 120px;
+      right: 20px;
+      z-index: 140;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+    .floating-panel{
+      background: rgba(45, 55, 72, 0.95);
+      border: none !important;
+      border-left: none !important;
+      border-radius: 4px;
+      padding: 8px 16px !important;
+      min-width: 180px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      animation: slideInRight 0.3s ease-out;
+      pointer-events: auto;
+    }
+    .floating-panel.exam{
+      border-left: none !important;
+    }
+    .floating-panel-label{
+      font-size: 11px;
+      color: #a0aec0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .floating-panel-value{
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .floating-panel-value.abnormal{
+      color: #fc8181;
+    }
+    .floating-panel-value.normal{
+      color: #68d391;
+    }
+    @keyframes slideInRight{
+      from{
+        transform: translateX(100px);
+        opacity: 0;
+      }
+      to{
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      問診シミュレーター
+    </div>
+    <div class="right" id="topRight"></div>
+  </header>
+
+  <div class="container">
+    <!-- ログイン -->
+    <section id="screen-login" class="screen active">
+      <div class="card">
+        <h3>ログイン</h3>
+        <div class="row" id="authPanel">
+          <button id="btnLogin">Googleアカウントでログインする</button>
+          <button id="btnLogout" class="secondary" style="display:none">ログアウト</button>
+        </div>
+      </div>
+      <div class="version-badge">version: 4.00</div>
+    </section>
+
+    <!-- トップ -->
+    <section id="screen-home" class="screen">
+      <div class="home-layout" style="display:grid; grid-template-columns:1fr 2fr; gap:12px; align-items:start;">
+        <!-- メニュー -->
+        <div>
+          <div class="menu-grid">
+            <div id="goTest" class="menu-card" role="button" tabindex="0">
+              <div class="menu-card-title">問診練習</div>
+              <div class="muted small">管理者が作成した患者を選択して対話練習</div>
+            </div>
+            <div id="goHistory" class="menu-card" role="button" tabindex="0">
+              <div class="menu-card-title">学修履歴</div>
+              <div class="muted small">過去の練習記録を確認する</div>
+            </div>
+            <div id="goAIAnalysis" class="menu-card" role="button" tabindex="0">
+              <div class="menu-card-title">AIコーチ</div>
+              <div class="muted small">AIがあなたをサポート</div>
+            </div>
+            <div id="goManual" class="menu-card" role="button" tabindex="0">
+              <div class="menu-card-title">マニュアル</div>
+              <div class="muted small">用語の定義と使い方ガイド</div>
+            </div>
+            <div id="goAdmin" class="menu-card" role="button" tabindex="0" style="display:none">
+              <div class="menu-card-title">管理者</div>
+              <div class="muted small">ユーザーや設定を管理する</div>
+            </div>
+          </div>
+
+          <div class="row" style="display:none">
+            <button id="checkRoleBtn" class="secondary">権限チェック</button>
+            <pre id="checkRoleResult" class="small" style="background:#f3f4f6; padding:8px; margin:0; white-space:pre-wrap; flex:1"></pre>
+          </div>
+        </div>
+
+        <!-- 練習アドバイス -->
+        <div class="menu-card" id="adviceCard" style="display:none; background:#fff8fb; position:relative; z-index:1;">
+          <div class="menu-card-title">練習アドバイス</div>
+          <div id="adviceContent" class="muted small" style="margin-top:8px; line-height:1.6;">
+            <div style="padding:12px;">読み込み中...</div>
+          </div>
+        </div>
+      </div>
+      <div class="version-badge">version: 4.00</div>
+    </section>
+
+    <!-- 対話 -->
+    <section id="screen-talk" class="screen">
+      <div class="stage">
+        <div class="video-wrap">
+          <video id="tkVideo" class="talk-video" playsinline muted loop preload="auto" src="/assets/patient_idle.mp4"></video>
+          <div id="tkPill" class="pill">準備中…</div>
+          <div class="bottom-bar">
+            <!-- 上段：テキストバー、残り時間、評価ボタン -->
+            <div style="display: flex; align-items: center; gap: 12px; width: 100%; order: 1;">
+              <!-- 対話テキスト表示（左側） -->
+              <div id="conversationTextArea" style="display:none; flex: 1; background:rgba(60,60,60,0.92); color:#fff; padding:12px 18px; font-size:14px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:999px; font-weight:800;">
+                <span id="conversationTextDisplay"></span>
+              </div>
+              <!-- スペーサー（テキストバー非表示時に右寄せ） -->
+              <div id="conversationSpacer" style="flex: 1;"></div>
+              <!-- 残り時間（右側） -->
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600;">
+                <span style="color: #6b7280;">残り時間:</span>
+                <span id="conversationTimer" style="color: #10b981; font-family: 'Courier New', monospace; font-size: 18px;">3:00</span>
+              </div>
+              <!-- 評価ボタン（右側） -->
+              <button id="tkFinish" class="btn-eval" disabled>評価に進む</button>
+            </div>
+            <!-- 下段：進捗バー -->
+            <div class="progress"><i id="tkProg"></i></div>
+          </div>
+        </div>
+      </div>
+      <div style="position:fixed; left:16px; bottom:16px; color:#fff; opacity:.85; font-size:12px">
+        sessionId: <span id="tkSid" class="mono">-</span>
+      </div>
+    </section>
+
+    <!-- 患者選択 -->
+    <section id="screen-patient-select" class="screen">
+      <div class="card">
+        <h3>患者選択</h3>
+        <div class="muted small" style="margin-bottom:12px">左の患者リストから選択すると、右側に詳細情報が表示されます。</div>
+        <div id="patientListLoading" class="muted">読み込み中...</div>
+        <div id="patientListError" class="callout" style="display:none"></div>
+        
+        <div id="patientSelectLayout" class="patient-select-layout" style="display:none">
+          <!-- 左側: 患者リスト -->
+          <div class="patient-list-col">
+            <div class="patient-list" id="patientList"></div>
+          </div>
+          
+          <!-- 右側: 患者詳細 -->
+          <div class="patient-detail-col">
+            <div class="patient-detail" id="patientDetail">
+              <div class="muted" style="text-align:center;padding:40px 0">患者を選択してください</div>
+            </div>
+            <!-- Version 3.06: 対話テキスト表示設定 -->
+            <div id="conversationOptionsArea" style="margin-top:16px; padding:12px; background:#f9fafb; border-radius:8px; border:1px solid #e5e7eb; display:none">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:500">
+                <input type="checkbox" id="showConversationText" style="width:18px; height:18px; cursor:pointer">
+                <span>対話テキストを画面下に表示する</span>
+              </label>
+              <div class="muted small" style="margin-top:6px; margin-left:26px">
+                チェックを入れると、現在話している内容が画面下部にリアルタイムで表示されます
+              </div>
+            </div>
+            
+            <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+              <button id="downloadPatientPdf" class="secondary" style="display:none">印刷/PDF</button>
+              <button id="startWithSelectedPatient" class="" style="display:none">この患者で対話開始</button>
+            </div>
+          </div>
+        </div>
+        
+        <button id="backFromPatientSelect" class="back-to-menu">メニューに戻る</button>
+      </div>
+    </section>
+
+    <!-- 学修履歴 -->
+    <section id="screen-history" class="screen">
+      <div class="card">
+        <h3>学修履歴</h3>
+        <div class="muted small" style="margin-bottom:12px">過去の対話セッションを確認できます。</div>
+        <div id="historyLoading" class="muted">読み込み中...</div>
+        <div id="historyError" class="callout" style="display:none"></div>
+        <div id="historyList" style="display:none"></div>
+        <button id="backFromHistory" class="back-to-menu">メニューに戻る</button>
+      </div>
+    </section>
+
+    <!-- AIコーチ -->
+    <section id="screen-ai-analysis" class="screen">
+      <div class="card">
+        <h3>AIコーチ</h3>
+        <div class="muted small" style="margin-bottom:1rem">
+          あなたの対話データをAIが分析し、学習をサポートします。自然言語で質問を入力してください。<br>
+          <strong>例:</strong> 「私の対話の強みと弱みを教えてください」「スコアを上げるにはどうすればいいですか」「最近の成長を分析してください」
+        </div>
+
+        <div style="display:flex; gap:1rem; align-items:flex-start">
+          <!-- 左側: 分析履歴リスト -->
+          <div style="flex:0 0 280px; max-height:600px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:6px; padding:8px">
+            <div style="font-weight:600; margin-bottom:8px; padding:4px">分析履歴</div>
+            <div id="ai-history-list-student">
+              <div class="muted small" style="padding:8px">読み込み中...</div>
+            </div>
+          </div>
+
+          <!-- 右側: 新規分析 & 詳細表示 -->
+          <div style="flex:1">
+            <div style="margin-bottom:1.5rem">
+              <label style="display:block; margin-bottom:0.5rem; font-weight:600">質問を入力:</label>
+              <textarea id="ai-query-student" rows="3" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:4px; font-size:14px"
+                placeholder="例: 私の対話スキルの改善点を詳しく教えてください"></textarea>
+              <button id="ai-analyze-btn-student" style="margin-top:0.5rem; padding:10px 20px; background:#ec4899; color:white; border:none; border-radius:12px; cursor:pointer; font-size:14px; font-weight:600">
+                分析を実行
+              </button>
+            </div>
+
+            <div id="ai-result-student" style="display:none">
+              <h4>分析結果</h4>
+              <div id="ai-metadata-student" style="background:#f3f4f6; padding:12px; border-radius:6px; margin-bottom:1rem; font-size:0.9em"></div>
+              <div id="ai-content-student" style="background:white; padding:20px; border:1px solid #e5e7eb; border-radius:6px; line-height:1.8"></div>
+            </div>
+
+            <div id="ai-loading-student" style="display:none; text-align:center; padding:2rem">
+              <div style="font-size:2rem">⏳</div>
+              <div>AIが分析中です。しばらくお待ちください...</div>
+            </div>
+
+            <div id="ai-error-student" style="display:none" class="callout"></div>
+          </div>
+        </div>
+
+        <button id="backFromAIAnalysis" class="back-to-menu" style="margin-top:1.5rem">メニューに戻る</button>
+      </div>
+    </section>
+
+    <!-- 結果 -->
+    <section id="screen-result" class="screen">
+      <div class="card">
+        <h3>問診スキル分析レポート</h3>
+        <div class="report-note">（各項目は 2点・1点・0点 の三段階評価）</div>
+        <div class="small muted">セッションID: <span id="rsSid" class="mono">-</span></div>
+
+        <div id="rsOut" class="seg" style="margin-top:10px"></div>
+
+        <div id="rsAudioPlayer" style="display:none"></div>
+
+        <div class="seg">
+          <div class="title">会話ログ</div>
+          <div id="rsLog" class="chatlog"></div>
+        </div>
+
+        <div style="margin-top:16px; text-align:right">
+          <button id="rsBackHome" class="secondary">設定に戻る</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 管理者画面 -->
+    <section id="screen-admin" class="screen">
+      <div class="admin-wrap">
+        <nav class="admin-nav">
+          <div class="muted small" id="adminRoleNote">権限確認中…</div>
+          <button class="admin-menu" data-target="pane-settings">全般設定</button>
+          <button class="admin-menu" data-target="pane-users">ユーザー管理</button>
+          <button class="admin-menu" data-target="pane-patient-creation">患者管理</button>
+          <button class="admin-menu" data-target="pane-stats">学修管理</button>
+          <button class="admin-menu" data-target="pane-scenarios">キーワード管理</button>
+          <button class="admin-menu" data-target="pane-analysis">統計</button>
+          <button class="admin-menu" data-target="pane-ai-analysis">AI分析</button>
+        </nav>
+        <div class="admin-content" style="padding-left:12px">
+          <div id="pane-settings" class="card">
+            <h3>全般設定</h3>
+          </div>
+
+          <div id="pane-users" class="card" style="display:none">
+            <h3>ユーザー管理</h3>
+            <div class="muted-box small">権限：一般／管理者 を切り替えできます。</div>
+            <div style="overflow:auto">
+              <table class="tbl" id="userTable">
+                <thead>
+                  <tr><th style="width:80px">UserNo</th><th>Mail</th><th>名前</th><th style="width:160px">権限</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="pane-patient-creation" class="card" style="display:none">
+            <!-- Version 3.0: 患者作成（症状別モードから移行）内容はadmin.jsで動的に生成 -->
+          </div>
+
+          <div id="pane-stats" class="card" style="display:none">
+            <h3>学修管理</h3>
+            <div class="muted small">読込中に少し時間がかかることがあります。</div>
+          </div>
+
+          <div id="pane-scenarios" class="card" style="display:none">
+            <h3>キーワード管理</h3>
+            <div class="muted small">各シナリオでのバイタルサインと身体診察の項目別キーワードを設定します。</div>
+
+            <!-- バイタルサイン設定 -->
+            <div style="margin:30px 0; padding:20px; background:#f9fafb; border-radius:8px">
+              <h4 style="margin-bottom:16px; color:#ec4899">バイタルサインのキーワード設定</h4>
+
+              <div class="keyword-config-item">
+                <label>体温:</label>
+                <input type="text" id="vital_temperature" placeholder="体温, 熱, temperature（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+              </div>
+
+              <div class="keyword-config-item">
+                <label>血圧:</label>
+                <input type="text" id="vital_bloodPressure" placeholder="血圧, blood pressure（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+              </div>
+
+              <div class="keyword-config-item">
+                <label>脈拍:</label>
+                <input type="text" id="vital_pulse" placeholder="脈拍, 脈, pulse, heart rate（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+              </div>
+
+              <div class="keyword-config-item">
+                <label>呼吸数:</label>
+                <input type="text" id="vital_respiration" placeholder="呼吸, 呼吸数, respiratory（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+              </div>
+
+              <div class="keyword-config-item">
+                <label>酸素飽和度:</label>
+                <input type="text" id="vital_spo2" placeholder="spo2, 酸素飽和度, 酸素, oxygen（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+              </div>
+            </div>
+
+            <!-- 身体診察設定 -->
+            <div style="margin:30px 0; padding:20px; background:#f0f9ff; border-radius:8px">
+              <h4 style="margin-bottom:16px; color:#0ea5e9">身体診察のキーワード設定</h4>
+
+              <div class="keyword-config-item">
+                <label>視診:</label>
+                <input type="text" id="exam_inspection" placeholder="視診, 見, inspection, look（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+              </div>
+
+              <div class="keyword-config-item">
+                <label>触診:</label>
+                <input type="text" id="exam_palpation" placeholder="触診, 触, palpation, touch（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+              </div>
+
+              <div class="keyword-config-item">
+                <label>聴診:</label>
+                <input type="text" id="exam_auscultation" placeholder="聴診, 聴, auscultation, listen（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+              </div>
+
+              <div class="keyword-config-item">
+                <label>打診:</label>
+                <input type="text" id="exam_percussion" placeholder="打診, 叩, percussion（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+              </div>
+            </div>
+
+            <button id="saveScenarioConfig" style="padding:12px 24px; background:#ec4899; color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer">
+              設定を保存
+            </button>
+            <span id="scenarioConfigStatus" style="margin-left:12px; color:#10b981"></span>
+          </div>
+
+          <div id="pane-analysis" class="card" style="display:none">
+            <h3>統計</h3>
+            <div class="muted small">次ステップで実装します。</div>
+          </div>
+
+          <div id="pane-ai-analysis" class="card" style="display:none">
+            <!-- AI分析の内容はadmin.jsで動的に生成 -->
+          </div>
+        </div>
+      </div>
+      <button id="backHomeAdmin" class="back-to-menu">メニューに戻る</button>
+    </section>
+
+    <!-- マニュアル画面 -->
+    <section id="screen-manual" class="screen">
+      <div class="card" style="max-width:900px; margin:0 auto">
+        <h3>マニュアル</h3>
+
+        <div style="margin-bottom:32px">
+          <h4 style="color:#ec4899; border-bottom:2px solid #fce7f3; padding-bottom:8px">用語の定義</h4>
+
+          <div style="margin:16px 0; padding:12px; background:#fff8fb; border-left:4px solid #ec4899; border-radius:6px">
+            <div style="font-weight:700; margin-bottom:6px">セッション</div>
+            <div style="font-size:14px; line-height:1.7">
+              <strong>1回の練習単位</strong>を指します。練習開始から評価完了までが1セッションです。<br>
+              例：「セッション数10回」= 10回の練習を実施したことを意味します。
+            </div>
+          </div>
+
+          <div style="margin:16px 0; padding:12px; background:#fff8fb; border-left:4px solid #ec4899; border-radius:6px">
+            <div style="font-weight:700; margin-bottom:6px">会話 / メッセージ</div>
+            <div style="font-size:14px; line-height:1.7">
+              <strong>1つ1つの発言</strong>を指します。看護師と患者の個別の発話が1件ずつカウントされます。<br>
+              例：「会話23件」= セッション内で看護師と患者が合計23回発言したことを意味します。
+            </div>
+          </div>
+
+          <div style="margin:16px 0; padding:12px; background:#fff8fb; border-left:4px solid #ec4899; border-radius:6px">
+            <div style="font-weight:700; margin-bottom:6px">評価</div>
+            <div style="font-size:14px; line-height:1.7">
+              <strong>AIによるルーブリック評価</strong>を指します。各評価項目は0点・1点・2点の3段階で評価され、合計スコアが100点満点に換算されます。<br>
+              対話終了後に「評価に進む」ボタンを押すことで評価が実行されます。
+            </div>
+          </div>
+
+          <div style="margin:16px 0; padding:12px; background:#fff8fb; border-left:4px solid #ec4899; border-radius:6px">
+            <div style="font-weight:700; margin-bottom:6px">評価済みセッション</div>
+            <div style="font-size:14px; line-height:1.7">
+              <strong>AI評価を完了したセッション</strong>を指します。統計分析や発話パターン分析の対象となるのは評価済みセッションのみです。<br>
+              ⚠️ 評価を実行しないと学修履歴や分析の対象に含まれません。
+            </div>
+          </div>
+        </div>
+
+
+        <div style="margin-bottom:32px">
+          <h4 style="color:#ec4899; border-bottom:2px solid #fce7f3; padding-bottom:8px">基本的な使い方</h4>
+
+          <div style="margin:16px 0">
+            <div style="font-weight:700; margin-bottom:6px">1. 練習を開始する</div>
+            <div style="font-size:14px; line-height:1.7; color:#6b7280">
+              トップメニューから「問診練習」を選び、患者情報を設定して「開始」ボタンを押します。
+            </div>
+          </div>
+
+          <div style="margin:16px 0">
+            <div style="font-weight:700; margin-bottom:6px">2. 対話を行う</div>
+            <div style="font-size:14px; line-height:1.7; color:#6b7280">
+              音声入力で患者と対話します。マイクボタンを押して話しかけてください。患者はAIが自動応答します。
+            </div>
+          </div>
+
+          <div style="margin:16px 0">
+            <div style="font-weight:700; margin-bottom:6px">3. 評価を受ける</div>
+            <div style="font-size:14px; line-height:1.7; color:#6b7280">
+              対話が終わったら「評価に進む」ボタンを押してください。AIが問診スキルを評価し、フィードバックを提供します。<br>
+              <span style="color:#dc2626; font-weight:600">⚠️ 重要：評価を実行しないと学修履歴に記録されません。</span>
+            </div>
+          </div>
+
+          <div style="margin:16px 0">
+            <div style="font-weight:700; margin-bottom:6px">4. 結果を確認する</div>
+            <div style="font-size:14px; line-height:1.7; color:#6b7280">
+              評価結果画面で各項目のスコア、総評、改善点を確認できます。「学修履歴」からいつでも過去の記録を振り返れます。
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#fef3c7; border:1px solid #fbbf24; border-radius:8px; padding:16px; margin-top:24px">
+          <div style="font-weight:700; color:#92400e; margin-bottom:8px">ヒント</div>
+          <ul style="margin:0; padding-left:20px; color:#78350f; font-size:14px; line-height:1.8">
+            <li>評価を受けないと統計分析の対象になりません</li>
+            <li>「練習アドバイス」は過去の評価データから自動生成されます</li>
+            <li>AIコーチでは「私の強みと弱みは？」「スコアを上げるには？」など自由に質問できます</li>
+          </ul>
+        </div>
+
+        <button id="backFromManual" class="back-to-menu" style="margin-top:24px">メニューに戻る</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+  <script>
+    // Mermaid初期化
+    if (typeof mermaid !== 'undefined') {
+      mermaid.initialize({ startOnLoad: false, theme: 'default' });
+    }
+  </script>
+  <script type="module" src="/auth.js?v=4.00"></script>
+  <script type="module" src="/practice.js?v=4.00"></script>
+  <script type="module" src="/admin.js?v=4.00"></script>
+
+  <script>
+    function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]))}
+
+    function setScreen(id){
+      document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+      const el = document.getElementById(id);
+      if (el) el.classList.add("active");
+    }
+
+    function decodeB64Unicode(b){
+      try{
+        const bytes = Uint8Array.from(atob(b), c=>c.charCodeAt(0));
+        return new TextDecoder().decode(bytes);
+      }catch(_){
+        try{ return decodeURIComponent(escape(atob(b))); }catch{ return ""; }
+      }
+    }
+    function parseJwt(token){
+      try{
+        const p = token.split(".")[1]; if(!p) return {};
+        const json = decodeB64Unicode(p);
+        return JSON.parse(json||"{}");
+      }catch{ return {}; }
+    }
+
+    async function renderTopRight(){
+      const el = document.getElementById("topRight");
+      if (!el) return;
+
+      const token = window.getIdTokenAsync ? await window.getIdTokenAsync() : null;
+      if (!token){ el.innerHTML = ""; return; }
+
+      const claims = parseJwt(token);
+      let disp = claims.name || claims.displayName || claims.email || claims.user_id || "ユーザー";
+      el.innerHTML = `ログイン中: <span class="uname">${esc(disp)}</span> <button id="btnLogoutTop" class="secondary">ログアウト</button>`;
+      const hookLogout = ()=>{
+        const topBtn = document.getElementById("btnLogoutTop");
+        const hiddenLogout = document.getElementById("btnLogout");
+        if(topBtn && hiddenLogout){ topBtn.onclick = ()=> hiddenLogout.click(); }
+      };
+      hookLogout();
+
+      try{
+        const r = await fetch("/api/roles/me",{headers:{Authorization:"Bearer "+token}});
+        const j = await r.json().catch(()=>({}));
+        const better = j?.name || j?.displayName || j?.email || j?.uid;
+        if (better && better !== disp){
+          el.innerHTML = `ログイン中: <span class="uname">${esc(better)}</span> <button id="btnLogoutTop" class="secondary">ログアウト</button>`;
+          hookLogout();
+        }
+      }catch{}
+    }
+
+    window.addEventListener("auth-state",(ev)=>{
+      const signed = !!ev?.detail?.signedIn;
+      if (signed){
+        const cur = document.querySelector(".screen.active")?.id;
+        if (cur === "screen-login") setScreen("screen-home");
+        renderTopRight();
+      }else{
+        setScreen("screen-login");
+        const el=document.getElementById("topRight"); if(el) el.innerHTML="";
+        const card = document.getElementById("goAdmin"); if (card) card.style.display = "none";
+      }
+    });
+
+    async function autoShowAdmin(){
+      try{
+        const token = window.getIdTokenAsync ? await window.getIdTokenAsync() : null;
+        if (!token) return;
+        const r = await fetch("/api/roles/me", { headers:{ Authorization:"Bearer " + token } });
+        const j = await r.json().catch(()=>({}));
+        if (j && j.role){ document.getElementById("adminRoleNote").textContent = "あなたの権限: " + j.role; }
+        if (j && j.role === "admin"){
+          const card = document.getElementById("goAdmin");
+          if (card) card.style.display = "";
+        }
+        renderTopRight();
+      }catch{}
+    }
+    window.addEventListener("auth-state", (ev)=>{
+      if (ev?.detail?.signedIn) autoShowAdmin();
+      else { const card = document.getElementById("goAdmin"); if (card) card.style.display = "none"; }
+    });
+    document.addEventListener("DOMContentLoaded", autoShowAdmin);
+
+    document.addEventListener("DOMContentLoaded", ()=>{
+      const goAdmin = document.getElementById("goAdmin");
+      const backHomeAdmin = document.getElementById("backHomeAdmin");
+      if (goAdmin){
+        goAdmin.addEventListener("click", ()=>{
+          setScreen("screen-admin");
+          // ▼ 追加：管理画面を開いたら必ず「ユーザー管理」を選択
+          const btn = document.querySelector('.admin-nav .admin-menu[data-target="pane-users"]');
+          if (btn) {
+            btn.click(); // admin.js のタブ切替ロジックに委譲
+          } else {
+            // フォールバック（万一 click ハンドラが未登録でも表示が出るように）
+            document.querySelectorAll('.admin-content > .card').forEach(p=>p.style.display='none');
+            const pane=document.getElementById('pane-users'); if(pane) pane.style.display='';
+          }
+        });
+      }
+      if (backHomeAdmin){
+        backHomeAdmin.addEventListener("click", ()=> setScreen("screen-home"));
+      }
+
+      // AI分析画面への遷移
+      const goAIAnalysis = document.getElementById("goAIAnalysis");
+      const backFromAIAnalysis = document.getElementById("backFromAIAnalysis");
+      if (goAIAnalysis) {
+        goAIAnalysis.addEventListener("click", ()=> {
+          setScreen("screen-ai-analysis");
+          // 画面を開いたときに入力欄と結果をクリア
+          const queryInput = document.getElementById("ai-query-student");
+          const resultDiv = document.getElementById("ai-result-student");
+          if (queryInput) queryInput.value = "";
+          if (resultDiv) resultDiv.style.display = "none";
+          loadAIAnalysisHistory(); // 履歴読み込み
+        });
+      }
+      if (backFromAIAnalysis) {
+        backFromAIAnalysis.addEventListener("click", ()=> setScreen("screen-home"));
+      }
+
+      // マニュアル画面への遷移
+      const goManual = document.getElementById("goManual");
+      const backFromManual = document.getElementById("backFromManual");
+      if (goManual) {
+        goManual.addEventListener("click", ()=> {
+          setScreen("screen-manual");
+        });
+      }
+      if (backFromManual) {
+        backFromManual.addEventListener("click", ()=> setScreen("screen-home"));
+      }
+
+      // AI分析実行ボタン
+      const aiAnalyzeBtn = document.getElementById("ai-analyze-btn-student");
+      const aiQueryInput = document.getElementById("ai-query-student");
+      if (aiAnalyzeBtn && aiQueryInput) {
+        aiAnalyzeBtn.addEventListener("click", async ()=> {
+          const query = aiQueryInput.value.trim();
+          if (!query) {
+            alert("質問を入力してください");
+            return;
+          }
+          await executeAIAnalysisStudent(query);
+        });
+      }
+    });
+
+    // 学生用AI分析実行関数
+    async function executeAIAnalysisStudent(query) {
+      const loadingDiv = document.getElementById("ai-loading-student");
+      const errorDiv = document.getElementById("ai-error-student");
+      const resultDiv = document.getElementById("ai-result-student");
+      const metadataDiv = document.getElementById("ai-metadata-student");
+      const contentDiv = document.getElementById("ai-content-student");
+
+      // UI状態リセット
+      if (loadingDiv) loadingDiv.style.display = "block";
+      if (errorDiv) errorDiv.style.display = "none";
+      if (resultDiv) resultDiv.style.display = "none";
+
+      try {
+        const token = await window.getIdTokenAsync();
+        if (!token) {
+          throw new Error("認証トークンを取得できません");
+        }
+
+        // Version 3.0: AI Coach利用制限チェック
+        const limitCheckResponse = await fetch("/api/ai-coach/check-limit", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+        const limitCheck = await limitCheckResponse.json();
+        
+        if (!limitCheck.ok || !limitCheck.allowed) {
+          throw new Error(limitCheck.unlimited 
+            ? "AI Coachの利用制限チェックに失敗しました" 
+            : `AI Coachの利用回数制限に達しました（残り${limitCheck.remaining || 0}回 / ${limitCheck.maxCount}回）`);
+        }
+
+        const response = await fetch("/api/student/ai-analysis", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          credentials: "include",
+          body: JSON.stringify({ query })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || `HTTP ${response.status}`);
+        }
+
+        // 結果を表示
+        if (loadingDiv) loadingDiv.style.display = "none";
+        if (resultDiv) resultDiv.style.display = "block";
+
+        // メタデータ表示
+        if (metadataDiv && result.metadata) {
+          const hasUnevaluated = result.metadata.sessionsWithoutScore > 0;
+          metadataDiv.innerHTML = `
+            <strong>あなたのデータ概要:</strong>
+            合計セッション数: ${result.metadata.totalSessions}
+            ${hasUnevaluated ? `（評価済み: ${result.metadata.sessionsWithScore}, 評価未実行: ${result.metadata.sessionsWithoutScore}）` : ''} |
+            平均スコア: ${result.metadata.avgScore}点 |
+            最高スコア: ${result.metadata.bestScore}点
+            ${hasUnevaluated ? `<br><span style="color:#d97706;">⚠️ ${result.metadata.sessionsWithoutScore}個のセッションで評価が未実行です。対話後は必ず「評価に進む」ボタンを押してください。</span>` : ''}
+          `;
+        }
+
+        // Version 3.0: AI Coach使用記録
+        await fetch("/api/ai-coach/record-usage", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        }).catch(err => console.error('Failed to record AI Coach usage:', err));
+
+        // AI分析結果をマークダウンとして表示
+        if (contentDiv) {
+          // marked.jsが利用可能な場合はマークダウンをレンダリング
+          if (typeof marked !== 'undefined') {
+            contentDiv.innerHTML = marked.parse(result.analysis);
+
+            // Mermaidグラフをレンダリング
+            if (typeof mermaid !== 'undefined') {
+              setTimeout(() => {
+                const mermaidDivs = contentDiv.querySelectorAll('code.language-mermaid');
+                mermaidDivs.forEach((code, index) => {
+                  const pre = code.parentElement;
+                  const mermaidDiv = document.createElement('div');
+                  mermaidDiv.className = 'mermaid';
+                  mermaidDiv.textContent = code.textContent;
+                  pre.replaceWith(mermaidDiv);
+                });
+                mermaid.run({ querySelector: '.mermaid' });
+              }, 100);
+            }
+
+            // Chart.jsグラフをレンダリング
+            if (typeof Chart !== 'undefined') {
+              setTimeout(() => {
+                const chartCodeBlocks = contentDiv.querySelectorAll('code.language-chartjs');
+                chartCodeBlocks.forEach((code, index) => {
+                  try {
+                    const chartConfig = JSON.parse(code.textContent);
+                    const pre = code.parentElement;
+
+                    // キャンバスコンテナを作成
+                    const canvasContainer = document.createElement('div');
+                    canvasContainer.style.cssText = 'max-width: 600px; margin: 20px auto; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);';
+
+                    const canvas = document.createElement('canvas');
+                    canvas.id = `chart-student-${index}`;
+                    canvasContainer.appendChild(canvas);
+                    pre.replaceWith(canvasContainer);
+
+                    // Chart.jsでグラフを描画
+                    new Chart(canvas.getContext('2d'), chartConfig);
+                  } catch (error) {
+                    console.error('[Chart.js] Failed to render chart:', error);
+                  }
+                });
+              }, 150);
+            }
+          } else {
+            // フォールバック: プレーンテキスト表示
+            const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+            contentDiv.innerHTML = `<pre style="white-space: pre-wrap; font-family: inherit">${esc(result.analysis)}</pre>`;
+          }
+        }
+
+      } catch (error) {
+        console.error("[AI Analysis Student] Error:", error);
+        if (loadingDiv) loadingDiv.style.display = "none";
+        if (errorDiv) {
+          errorDiv.style.display = "block";
+          errorDiv.textContent = error.message;
+        }
+      } finally {
+        // 分析完了後に入力欄をクリアして履歴をリロード
+        const queryInput = document.getElementById("ai-query-student");
+        if (queryInput) queryInput.value = "";
+        loadAIAnalysisHistory();
+      }
+    }
+
+    // 学生用AI分析履歴読み込み関数
+    async function loadAIAnalysisHistory() {
+      const listDiv = document.getElementById("ai-history-list-student");
+      if (!listDiv) return;
+
+      try {
+        const token = await window.getIdTokenAsync();
+        if (!token) {
+          listDiv.innerHTML = '<div class="muted small" style="padding:8px">ログインが必要です</div>';
+          return;
+        }
+
+        const response = await fetch("/api/student/ai-analysis-history", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (!result.ok || !result.history || result.history.length === 0) {
+          listDiv.innerHTML = '<div class="muted small" style="padding:8px">履歴がありません</div>';
+          return;
+        }
+
+        // 履歴アイテムをレンダリング
+        listDiv.innerHTML = result.history.map(item => {
+          const date = new Date(item.createdAt).toLocaleString('ja-JP', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          const queryPreview = item.query.length > 40
+            ? item.query.substring(0, 40) + '...'
+            : item.query;
+
+          return `
+            <div class="history-item" data-id="${item.id}" style="padding:8px; cursor:pointer; border-bottom:1px solid #f3f4f6; transition:background 0.2s">
+              <div style="font-size:0.75em; color:#9ca3af; margin-bottom:2px">${date}</div>
+              <div style="font-size:0.85em; color:#374151">${escapeHtml(queryPreview)}</div>
+            </div>
+          `;
+        }).join('');
+
+        // クリックハンドラーを追加
+        listDiv.querySelectorAll('.history-item').forEach(item => {
+          item.addEventListener('click', async function() {
+            const itemId = this.dataset.id;
+            const historyItem = result.history.find(h => h.id === itemId);
+            if (historyItem) {
+              await displayHistoryItem(historyItem);
+            }
+          });
+
+          // ホバーエフェクト
+          item.addEventListener('mouseenter', function() {
+            this.style.background = '#f9fafb';
+          });
+          item.addEventListener('mouseleave', function() {
+            this.style.background = 'transparent';
+          });
+        });
+
+      } catch (error) {
+        console.error('[AI Analysis History] Failed to load:', error);
+        listDiv.innerHTML = '<div class="muted small" style="padding:8px; color:#dc2626">履歴の読み込みに失敗しました</div>';
+      }
+    }
+
+    // 履歴アイテムを表示する関数
+    async function displayHistoryItem(item) {
+      const resultDiv = document.getElementById("ai-result-student");
+      const metadataDiv = document.getElementById("ai-metadata-student");
+      const contentDiv = document.getElementById("ai-content-student");
+      const loadingDiv = document.getElementById("ai-loading-student");
+      const errorDiv = document.getElementById("ai-error-student");
+
+      // UI状態リセット
+      if (loadingDiv) loadingDiv.style.display = "none";
+      if (errorDiv) errorDiv.style.display = "none";
+      if (resultDiv) resultDiv.style.display = "block";
+
+      // メタデータ表示
+      if (metadataDiv && item.metadata) {
+        const hasUnevaluated = item.metadata.sessionsWithoutScore > 0;
+        metadataDiv.innerHTML = `
+          <strong>データ概要（分析時点）:</strong>
+          合計セッション数: ${item.metadata.totalSessions}
+          ${hasUnevaluated ? `（評価済み: ${item.metadata.sessionsWithScore}, 評価未実行: ${item.metadata.sessionsWithoutScore}）` : ''} |
+          平均スコア: ${item.metadata.avgScore}点 |
+          最高スコア: ${item.metadata.bestScore}点
+        `;
+      }
+
+      // AI分析結果をマークダウンとして表示
+      if (contentDiv) {
+        if (typeof marked !== 'undefined') {
+          contentDiv.innerHTML = marked.parse(item.analysis);
+
+          // Mermaidグラフをレンダリング
+          if (typeof mermaid !== 'undefined') {
+            setTimeout(() => {
+              const mermaidDivs = contentDiv.querySelectorAll('code.language-mermaid');
+              mermaidDivs.forEach((code, index) => {
+                const pre = code.parentElement;
+                const mermaidDiv = document.createElement('div');
+                mermaidDiv.className = 'mermaid';
+                mermaidDiv.textContent = code.textContent;
+                pre.replaceWith(mermaidDiv);
+              });
+              mermaid.run({ querySelector: '.mermaid' });
+            }, 100);
+          }
+
+          // Chart.jsグラフをレンダリング
+          if (typeof Chart !== 'undefined') {
+            setTimeout(() => {
+              const chartCodeBlocks = contentDiv.querySelectorAll('code.language-chartjs');
+              chartCodeBlocks.forEach((code, index) => {
+                try {
+                  const chartConfig = JSON.parse(code.textContent);
+                  const pre = code.parentElement;
+
+                  const canvasContainer = document.createElement('div');
+                  canvasContainer.style.cssText = 'max-width: 600px; margin: 20px auto; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);';
+
+                  const canvas = document.createElement('canvas');
+                  canvas.id = `chart-history-${index}-${Date.now()}`;
+                  canvasContainer.appendChild(canvas);
+                  pre.replaceWith(canvasContainer);
+
+                  new Chart(canvas.getContext('2d'), chartConfig);
+                } catch (error) {
+                  console.error('[Chart.js] Failed to render chart:', error);
+                }
+              });
+            }, 150);
+          }
+        } else {
+          const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+          contentDiv.innerHTML = `<pre style="white-space: pre-wrap; font-family: inherit">${esc(item.analysis)}</pre>`;
+        }
+      }
+    }
+
+    // HTMLエスケープ関数
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, m => map[m]);
+    }
+  </script>
+
+  <!-- 個別表示用の浮遊パネルコンテナ -->
+  <div id="floatingPanels"></div>
+
+  <!-- 統合ステータスパネル -->
+  <button id="toggleStatusBtn" class="toggle-status-btn" style="display:none">ステータス</button>
+
+  <div id="statusPanel">
+    <div class="status-header">
+      <div class="status-title">対話情報</div>
+      <button id="closeStatusBtn" class="status-toggle">閉じる</button>
+    </div>
+
+    <!-- 音声分析セクション（非表示） -->
+    <div class="status-section" id="speechStatusSection" style="display:none">
+      <div class="status-section-title">音声分析</div>
+      <div id="speechStatusContent">
+        <div class="status-empty">音声分析データを収集中...</div>
+      </div>
+    </div>
+
+    <!-- バイタルサインセクション -->
+    <div class="status-section" id="vitalStatusSection" style="display:none">
+      <div class="status-section-title">バイタルサイン</div>
+      <div id="vitalStatusContent">
+        <div class="status-empty">未測定</div>
+      </div>
+    </div>
+
+    <!-- 身体診察セクション -->
+    <div class="status-section" id="examStatusSection" style="display:none">
+      <div class="status-section-title">身体診察</div>
+      <div id="examStatusContent">
+        <div class="status-empty">未実施</div>
+      </div>
+    </div>
+  </div>
+
+
+</body>
+</html>
