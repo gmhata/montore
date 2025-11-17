@@ -6,15 +6,14 @@ import {
   setPersistence, inMemoryPersistence
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 
-// MONTORE Firebase Configuration
+// MONTORE Firebase Configuration (using Ver3 project: ver6-trainer-dev)
 const firebaseConfig = {
-  apiKey: "AIzaSyBo3TDmGkYCtuPnTYxIPbB-AF02p86jpBI",
-  authDomain: "montore-e35be.firebaseapp.com",
-  projectId: "montore-e35be",
-  storageBucket: "montore-e35be.firebasestorage.app",
-  messagingSenderId: "327159500498",
-  appId: "1:327159500498:web:f104de2e4a9d4f041f270b",
-  measurementId: "G-TTK7RQRZKB"
+  apiKey: "AIzaSyCaD84asmb8btjVwQ-nD7XcXAgVdLQkktY",
+  authDomain: "ver6-trainer-dev.firebaseapp.com",
+  projectId: "ver6-trainer-dev",
+  storageBucket: "ver6-trainer-dev.firebasestorage.app",
+  messagingSenderId: "674747653679",
+  appId: "1:674747653679:web:e6299730d4c194a59831c2a"
 };
 
 const app = initializeApp(firebaseConfig);

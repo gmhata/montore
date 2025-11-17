@@ -1,5 +1,5 @@
 # Cloud Build configuration for MONTORE (モントレ)
-# Version 4.00: Ver3からの新規プロジェクト - 完全独立環境
+# Version 4.00: Ver3プロジェクト（ver6-trainer-dev）内で別サービスとして運用
 steps:
   # ステップ1: Dockerイメージをビルド（キャッシュなし）
   - name: 'gcr.io/cloud-builders/docker'
@@ -42,7 +42,7 @@ steps:
       - '--timeout=300'
       - '--max-instances=10'
       - '--min-instances=0'
-      - '--set-env-vars=FIREBASE_PROJECT_ID=montore-e35be,FIRESTORE_PROJECT_ID=montore-e35be,APP_VERSION=4.00,ASSETS_BUCKET=montore-recordings'
+      - '--set-env-vars=FIREBASE_PROJECT_ID=ver6-trainer-dev,FIRESTORE_PROJECT_ID=ver6-trainer-dev,APP_VERSION=4.00,ASSETS_BUCKET=ver6-trainer-recordings'
       - '--set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest'
 
 # ビルドしたイメージを保存

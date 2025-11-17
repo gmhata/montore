@@ -15,11 +15,13 @@ OpenAI Realtime APIを活用したリアルタイム音声対話により、実�
 
 ### 本番環境（Production）
 - **ブランチ**: `main`
-- **Firebase プロジェクト**: `montore`
-- **Cloud Run サービス**: `montore`
+- **Firebase プロジェクト**: `ver6-trainer-dev`（Ver3と共有）
+- **Cloud Run サービス**: `montore`（Ver3の`ver6-trainer`とは別）
 - **ビルド設定**: `cloudbuild-dev.yaml`
 - **URL**: https://montore-xxxxx-an.a.run.app
 - **用途**: 実際の教育・訓練環境
+
+⚠️ **注意**: Ver3プロジェクト内で運用しますが、Cloud Runサービスは完全に分離されています。
 
 ## 🚀 デプロイフロー
 
@@ -123,12 +125,12 @@ gcloud secrets create OPENAI_API_KEY \
 
 ## 📝 環境変数
 
-### 本番環境（montore プロジェクト）
-- `FIREBASE_PROJECT_ID`: montore
-- `FIRESTORE_PROJECT_ID`: montore
+### 本番環境（ver6-trainer-dev プロジェクト）
+- `FIREBASE_PROJECT_ID`: ver6-trainer-dev
+- `FIRESTORE_PROJECT_ID`: ver6-trainer-dev
 - `APP_VERSION`: 4.00
-- `ASSETS_BUCKET`: montore-recordings
-- `OPENAI_API_KEY`: Secret Manager から取得
+- `ASSETS_BUCKET`: ver6-trainer-recordings
+- `OPENAI_API_KEY`: Secret Manager から取得（Ver3と共有）
 
 ## 🎓 主要機能
 
