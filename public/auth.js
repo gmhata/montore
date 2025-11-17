@@ -6,15 +6,15 @@ import {
   setPersistence, inMemoryPersistence
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 
-// ⚠️ TODO: MONTOREプロジェクトのfirebaseConfigに更新してください
-// Firebase Console > プロジェクトの設定 > マイアプリ > SDK設定とconfiguration から取得
+// MONTORE Firebase Configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyCaD84asmb8btjVwQ-nD7XcXAgVdLQkktY",  // ← 更新が必要
-  authDomain: "ver6-trainer-dev.firebaseapp.com",  // ← montore.firebaseapp.com に更新
-  projectId: "ver6-trainer-dev",  // ← montore に更新
-  storageBucket: "ver6-trainer-dev.firebasestorage.app",  // ← montore.firebasestorage.app に更新
-  messagingSenderId: "674747653679",  // ← 更新が必要
-  appId: "1:674747653679:web:e6299730d4c194a59831c2a"  // ← 更新が必要
+  apiKey: "AIzaSyBo3TDmGkYCtuPnTYxIPbB-AF02p86jpBI",
+  authDomain: "montore-e35be.firebaseapp.com",
+  projectId: "montore-e35be",
+  storageBucket: "montore-e35be.firebasestorage.app",
+  messagingSenderId: "327159500498",
+  appId: "1:327159500498:web:f104de2e4a9d4f041f270b",
+  measurementId: "G-TTK7RQRZKB"
 };
 
 const app = initializeApp(firebaseConfig);

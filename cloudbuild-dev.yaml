@@ -42,7 +42,7 @@ steps:
       - '--timeout=300'
       - '--max-instances=10'
       - '--min-instances=0'
-      - '--set-env-vars=FIREBASE_PROJECT_ID=montore,FIRESTORE_PROJECT_ID=montore,APP_VERSION=4.00,ASSETS_BUCKET=montore-recordings'
+      - '--set-env-vars=FIREBASE_PROJECT_ID=montore-e35be,FIRESTORE_PROJECT_ID=montore-e35be,APP_VERSION=4.00,ASSETS_BUCKET=montore-recordings'
       - '--set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest'
 
 # ビルドしたイメージを保存
