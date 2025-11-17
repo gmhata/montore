@@ -6,6 +6,9 @@ node_modules/
 .env.local
 .env.*.local
 
+# Firebase configuration (contains API keys)
+public/firebase-config.js
+
 # Logs
 logs
 *.log
