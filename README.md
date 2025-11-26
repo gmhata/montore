@@ -15,13 +15,13 @@ OpenAI Realtime APIを活用したリアルタイム音声対話により、実�
 
 ### 本番環境（Production）
 - **ブランチ**: `main`
-- **Firebase プロジェクト**: `ver6-trainer-dev`（Ver3と共有）
-- **Cloud Run サービス**: `montore`（Ver3の`ver6-trainer`とは別）
+- **Firebase プロジェクト**: `[新規Ver4プロジェクトID]`（Ver3とは完全分離）
+- **Cloud Run サービス**: `montore`
 - **ビルド設定**: `cloudbuild-dev.yaml`
 - **URL**: https://montore-xxxxx-an.a.run.app
 - **用途**: 実際の教育・訓練環境
 
-⚠️ **注意**: Ver3プロジェクト内で運用しますが、Cloud Runサービスは完全に分離されています。
+⚠️ **重要**: Ver3（ver6-trainer-dev）とは完全に分離された独立環境です。データベース、認証、デプロイすべてが別プロジェクトで管理されます。
 
 ## 🚀 デプロイフロー
 
@@ -72,18 +72,20 @@ Firebase Console で以下を設定：
 
 ### 2. Firebase 設定の更新
 
-`public/auth.js` のfirebaseConfigを更新：
+`public/firebase-config.js` を作成し、Firebase認証情報を設定：
 
 ```javascript
-const firebaseConfig = {
+window.FIREBASE_CONFIG = {
   apiKey: "YOUR_API_KEY",
-  authDomain: "montore.firebaseapp.com",
-  projectId: "montore",
-  storageBucket: "montore.firebasestorage.app",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
   messagingSenderId: "YOUR_SENDER_ID",
   appId: "YOUR_APP_ID"
 };
 ```
+
+⚠️ **セキュリティ**: `firebase-config.js`は`.gitignore`に含まれているため、Gitにコミットされません。
 
 ### 3. Cloud Build トリガーの設定
 
@@ -93,7 +95,8 @@ Google Cloud Console で以下のトリガーを設定：
 - **イベント**: ブランチにプッシュ
 - **ソース**: `^main$`
 - **ビルド構成**: `cloudbuild-dev.yaml`
-- **プロジェクト**: `montore`
+- **プロジェクト**: `[新規Ver4プロジェクトID]`
+- **置換変数**: `_ASSETS_BUCKET` = `montore-recordings`（または任意の名前）
 
 ### 4. Firebase 認証ドメインの追加
 
@@ -108,8 +111,14 @@ OpenAI API Keyを Secret Manager に登録：
 
 ```bash
 gcloud secrets create OPENAI_API_KEY \
-  --project=montore \
+  --project=[新規Ver4プロジェクトID] \
   --data-file=- <<< "sk-proj-YOUR_API_KEY"
+
+# Cloud Run サービスアカウントにアクセス権を付与
+gcloud secrets add-iam-policy-binding OPENAI_API_KEY \
+  --project=[新規Ver4プロジェクトID] \
+  --member="serviceAccount:[PROJECT_NUMBER]-compute@developer.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
 ```
 
 ## 🛠️ 技術スタック
@@ -125,12 +134,12 @@ gcloud secrets create OPENAI_API_KEY \
 
 ## 📝 環境変数
 
-### 本番環境（ver6-trainer-dev プロジェクト）
-- `FIREBASE_PROJECT_ID`: ver6-trainer-dev
-- `FIRESTORE_PROJECT_ID`: ver6-trainer-dev
+### 本番環境（Ver4独立プロジェクト）
+- `FIREBASE_PROJECT_ID`: [新規Ver4プロジェクトID]（自動設定: $PROJECT_ID）
+- `FIRESTORE_PROJECT_ID`: [新規Ver4プロジェクトID]（自動設定: $PROJECT_ID）
 - `APP_VERSION`: 4.00
-- `ASSETS_BUCKET`: ver6-trainer-recordings
-- `OPENAI_API_KEY`: Secret Manager から取得（Ver3と共有）
+- `ASSETS_BUCKET`: montore-recordings（Cloud Build置換変数: $_ASSETS_BUCKET）
+- `OPENAI_API_KEY`: Secret Manager から取得（Ver4プロジェクト専用）
 
 ## 🎓 主要機能
 
@@ -207,13 +216,31 @@ gcloud secrets create OPENAI_API_KEY \
 
 ## 📖 Ver3との関係
 
-MONTOREはVer3.57をベースとした完全独立プロジェクトです。
+MONTOREはVer3.57をベースとした**完全独立プロジェクト**です。
 
-- **Ver3環境**: 既存の`ver6-trainer-dev`プロジェクトとして継続運用
-- **MONTORE環境**: 新しい`montore`プロジェクトとして独立運用
-- **互いに影響なし**: データベース、認証、デプロイが完全分離
+### 完全分離の実現
 
-Ver3で実証された機能と設計をベースに、新機能の実験と開発を行います。
+| 項目 | Ver3 | Ver4 (MONTORE) |
+|------|------|----------------|
+| **Firebaseプロジェクト** | ver6-trainer-dev | [新規Ver4プロジェクトID] |
+| **Firestoreデータベース** | ver6-trainer-dev | [新規Ver4プロジェクトID] |
+| **Firebase Authentication** | ver6-trainer-dev | [新規Ver4プロジェクトID] |
+| **GCPプロジェクト** | ver6-trainer-dev | [新規Ver4プロジェクトID] |
+| **Cloud Run サービス** | ver6-trainer | montore |
+| **Cloud Storage** | ver6-trainer-recordings | montore-recordings |
+| **GitHub リポジトリ** | gmhata/webapp | gmhata/montore |
+| **ディレクトリ** | /home/user/webapp | /home/user/montore |
+
+### 独立性の保証
+
+- ✅ **データベース**: 完全に別のFirestoreインスタンス
+- ✅ **認証**: 別のユーザープール、別の認証設定
+- ✅ **API Key**: 別のFirebase API Key（セキュリティ分離）
+- ✅ **デプロイ**: 別のCloud Runサービス、別のコンテナイメージ
+- ✅ **コスト**: 別の課金、別の利用統計
+- ✅ **Secret管理**: 別のOpenAI APIキー（推奨）
+
+Ver3で実証された機能と設計をベースに、新機能の実験と開発を行います。**Ver4の開発や障害がVer3に影響を与えることはありません。**
 
 ## 🎉 Ver4.00の特徴
 

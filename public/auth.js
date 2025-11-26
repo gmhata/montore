@@ -10,9 +10,9 @@ import {
 // ⚠️ セキュリティ: API Keyは公開リポジトリにコミットしない
 const firebaseConfig = window.FIREBASE_CONFIG || {
   apiKey: "PLACEHOLDER_WILL_BE_REPLACED",
-  authDomain: "ver6-trainer-dev.firebaseapp.com",
-  projectId: "ver6-trainer-dev",
-  storageBucket: "ver6-trainer-dev.firebasestorage.app",
+  authDomain: "PLACEHOLDER_PROJECT_ID.firebaseapp.com",
+  projectId: "PLACEHOLDER_PROJECT_ID",
+  storageBucket: "PLACEHOLDER_PROJECT_ID.firebasestorage.app",
   messagingSenderId: "PLACEHOLDER",
   appId: "PLACEHOLDER"
 };

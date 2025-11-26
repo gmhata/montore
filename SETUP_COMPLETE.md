@@ -15,14 +15,16 @@
    - Ver3（/home/user/webapp）からMONTORE（/home/user/montore）にコピー
    - 不要ファイル除外（.git, node_modules等）
 
-2. **プロジェクトID統一**
-   - `ver6-trainer-dev` → `montore-e35be` に更新
+2. **プロジェクトID更新**
+   - Ver3参照（`ver6-trainer-dev`）をすべて削除
+   - プレースホルダーに置き換え
    - バージョン: `3.57` → `4.00`
    - 全設定ファイルを更新完了
 
 3. **Firebase設定更新**
-   - `public/auth.js`: montore-e35be プロジェクトのfirebaseConfig
-   - cloudbuild設定: FIREBASE_PROJECT_ID更新
+   - `public/auth.js`: プレースホルダー設定（Ver4プロジェクト待ち）
+   - `public/firebase-config.js`: 削除済み（Ver3認証情報を削除）
+   - cloudbuild設定: $PROJECT_ID変数使用に変更
 
 4. **Git初期化**
    - 新しいGitリポジトリ作成
@@ -37,16 +39,23 @@
    - DEPLOYMENT_GUIDE.md: 詳細なデプロイ手順
    - start-local.sh: ローカル起動スクリプト
 
-### ✅ Firebase/GCP設定（完了）
+### ⏳ Firebase/GCP設定（保留中）
 
-- **Firebase Project**: montore-e35be
-- **Firestore Database**: 作成済み（asia-northeast1）
-- **Authentication**: メール/パスワード有効化済み
-- **GCP APIs**: 有効化済み
+- **Firebase Project**: ⚠️ 課金クォータ制限により保留中
+  - 以前作成した montore-e35be はシャットダウン済み
+  - 新規Ver4プロジェクト作成待ち
+- **Firestore Database**: 未作成（プロジェクト作成後）
+- **Authentication**: 未設定（プロジェクト作成後）
+- **GCP APIs**: 未有効化（プロジェクト作成後）
   - Cloud Run API
   - Cloud Build API
   - Artifact Registry API
   - Secret Manager API
+
+**課金クォータ解決方法**:
+1. 未使用GCPプロジェクト（gen-lang-client-0221373615等）を削除
+2. Google Cloudサポートに課金クォータ増加をリクエスト
+3. 別のGoogleアカウントでVer4プロジェクトを作成
 
 ### ✅ Ver3保護（確認済み）
 
@@ -119,21 +128,22 @@ GitHubプッシュ完了後、以下の手順でデプロイしてください�
 
 1. **OpenAI API KeyをSecret Managerに登録**
    ```bash
-   gcloud config set project montore-e35be
+   gcloud config set project [Ver4プロジェクトID]
    echo -n "YOUR_OPENAI_API_KEY" | gcloud secrets create OPENAI_API_KEY --data-file=-
    ```
 
 2. **Cloud Storage Bucketを作成**
    ```bash
-   gsutil mb -p montore-e35be -c STANDARD -l asia-northeast1 gs://montore-recordings
+   gsutil mb -p [Ver4プロジェクトID] -c STANDARD -l asia-northeast1 gs://montore-recordings
    ```
 
 3. **Cloud Buildトリガーを設定**
-   - https://console.cloud.google.com/cloud-build/triggers?project=montore-e35be
+   - https://console.cloud.google.com/cloud-build/triggers?project=[Ver4プロジェクトID]
    - 「トリガーを作成」
    - GitHub連携: gmhata/montore
    - ブランチ: main
    - 構成ファイル: cloudbuild-dev.yaml
+   - **置換変数**: `_ASSETS_BUCKET` = `montore-recordings`
 
 4. **デプロイ実行**
    ```bash
@@ -188,21 +198,23 @@ PORT=4000 node server.js
 
 ```
 /home/user/
-├── webapp/          ← Ver3（ver6-trainer-dev）
-│   ├── .git/        ← Ver3のGit（保護済み）
+├── webapp/          ← Ver3（ver6-trainer-dev） - 完全保護
+│   ├── .git/        ← Ver3のGit（変更なし）
 │   └── ...
 │
-└── montore/         ← MONTORE（新規）
-    ├── .git/        ← MONTOREのGit（独立）
+└── montore/         ← MONTORE Ver4（完全独立）
+    ├── .git/        ← MONTOREのGit（独立リポジトリ）
     ├── public/
     │   ├── index.html
-    │   ├── auth.js      (Firebase設定済み)
+    │   ├── auth.js      (プレースホルダー設定)
+    │   ├── firebase-config.js  (削除済み - .gitignoreに追加)
     │   ├── admin.js
     │   └── practice.js
     ├── server.js
     ├── package.json     ("montore", "4.0.0")
-    ├── cloudbuild-dev.yaml
-    ├── README.md
+    ├── cloudbuild-dev.yaml  (Ver4プロジェクト用に修正済み)
+    ├── cloudbuild.yaml      (Ver4プロジェクト用に修正済み)
+    ├── README.md            (完全独立環境として記載修正済み)
     ├── DEPLOYMENT_GUIDE.md
     ├── SETUP_COMPLETE.md (このファイル)
     └── start-local.sh
@@ -220,25 +232,31 @@ PORT=4000 node server.js
 
 ## 🔧 設定ファイルまとめ
 
-### Firebase設定（public/auth.js）
+### Firebase設定（public/firebase-config.js）
+
+⚠️ **現在**: Ver4 Firebaseプロジェクト作成待ち
+
+Ver4プロジェクト作成後、以下のファイルを作成：
 
 ```javascript
-const firebaseConfig = {
-  apiKey: "AIzaSyBo3TDmGkYCtuPnTYxIPbB-AF02p86jpBI",
-  authDomain: "montore-e35be.firebaseapp.com",
-  projectId: "montore-e35be",
-  storageBucket: "montore-e35be.firebasestorage.app",
-  messagingSenderId: "327159500498",
-  appId: "1:327159500498:web:f104de2e4a9d4f041f270b",
-  measurementId: "G-TTK7RQRZKB"
+// public/firebase-config.js
+window.FIREBASE_CONFIG = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 ```
+
+**注意**: このファイルは`.gitignore`に含まれており、Gitにコミットされません。
 
 ### 環境変数（Cloud Run）
 
 ```
-FIREBASE_PROJECT_ID=montore-e35be
-FIRESTORE_PROJECT_ID=montore-e35be
+FIREBASE_PROJECT_ID=[Ver4プロジェクトID]
+FIRESTORE_PROJECT_ID=[Ver4プロジェクトID]
 APP_VERSION=4.00
 ASSETS_BUCKET=montore-recordings
 OPENAI_API_KEY=<Secret Managerから取得>
