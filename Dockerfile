@@ -14,7 +14,6 @@ COPY package*.json ./
 RUN npm ci --only=production --loglevel=error
 
 # アプリケーションのソースコードをコピー
-COPY server-minimal.js ./
 COPY server.js ./
 COPY public ./public
 
