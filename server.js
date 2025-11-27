@@ -133,7 +133,7 @@ app.get("/firebase-config.js", (_req, res) => {
   
   // 環境変数またはデフォルト値からFirebase設定を生成
   const config = {
-    apiKey: process.env.FIREBASE_API_KEY || "AIzaSyBo3TDmGkYCtuPnTYxIPbB-AF02p86jpBI",
+    apiKey: process.env.FIREBASE_API_KEY || "AIzaSyAQtV23xflspVnkJyap9OB3uPKjphfLdDw",
     authDomain: process.env.FIREBASE_AUTH_DOMAIN || `${AUTH_PROJECT_ID}.firebaseapp.com`,
     projectId: AUTH_PROJECT_ID || "montore-e35be",
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET || `${AUTH_PROJECT_ID}.firebasestorage.app`,
