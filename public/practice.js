@@ -922,6 +922,43 @@ document.addEventListener("DOMContentLoaded", ()=>{
   const backBtn = $("rsBackHome");
   if (backBtn) backBtn.textContent = "メニューに戻る";
 
+  // Setup login/logout button handlers
+  const btnLogin = $("btnLogin");
+  const btnLogout = $("btnLogout");
+  
+  if (btnLogin) {
+    btnLogin.addEventListener("click", async ()=>{
+      try {
+        console.log("[auth] Login button clicked");
+        if (window.firebaseSignInWithPopup) {
+          await window.firebaseSignInWithPopup();
+        } else {
+          console.error("[auth] firebaseSignInWithPopup not available");
+          alert("認証機能が読み込まれていません。ページを再読み込みしてください。");
+        }
+      } catch (e) {
+        console.error("[auth] Login error:", e);
+        alert("ログインに失敗しました: " + (e?.message || e));
+      }
+    });
+  }
+  
+  if (btnLogout) {
+    btnLogout.addEventListener("click", async ()=>{
+      try {
+        console.log("[auth] Logout button clicked");
+        if (window.firebaseSignOut) {
+          await window.firebaseSignOut();
+          show("screen-login");
+        } else {
+          console.error("[auth] firebaseSignOut not available");
+        }
+      } catch (e) {
+        console.error("[auth] Logout error:", e);
+      }
+    });
+  }
+
   window.addEventListener("auth-state",(ev)=>{ const si=!!(ev?.detail?.signedIn); show(si?"screen-home":"screen-login"); });
   (async ()=>{ const si=(window.__authSignedIn===true)||!!(await (window.getIdTokenAsync?.()||Promise.resolve(null))); show(si?"screen-home":"screen-login"); })();
 
@@ -3858,3 +3895,32 @@ window.addEventListener("auth-state", (ev) => {
     setTimeout(() => loadPracticeAdvice(), 500);
   }
 });
+
+// Auth callbacks (called by auth.js)
+window.onUserSignedIn = async (user) => {
+  console.log("[auth] User signed in:", user?.email);
+  window.__authSignedIn = true;
+  
+  // Show/hide login/logout buttons
+  const btnLogin = $("btnLogin");
+  const btnLogout = $("btnLogout");
+  if (btnLogin) btnLogin.style.display = "none";
+  if (btnLogout) btnLogout.style.display = "";
+  
+  // Dispatch auth-state event
+  window.dispatchEvent(new CustomEvent("auth-state", { detail: { signedIn: true, user } }));
+};
+
+window.onUserSignedOut = async () => {
+  console.log("[auth] User signed out");
+  window.__authSignedIn = false;
+  
+  // Show/hide login/logout buttons
+  const btnLogin = $("btnLogin");
+  const btnLogout = $("btnLogout");
+  if (btnLogin) btnLogin.style.display = "";
+  if (btnLogout) btnLogout.style.display = "none";
+  
+  // Dispatch auth-state event
+  window.dispatchEvent(new CustomEvent("auth-state", { detail: { signedIn: false } }));
+};
