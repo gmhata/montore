@@ -404,6 +404,27 @@ app.post("/api/sessions/start", requireAuth, async (req, res) => {
       updatedAt: now,
       status: "active",
     });
+    
+    // 患者の使用回数を増やす
+    const patientId = cfg.patientId;
+    if (patientId) {
+      try {
+        const patientRef = db.collection("test_patients").doc(patientId);
+        const patientSnap = await patientRef.get();
+        if (patientSnap.exists) {
+          const currentCount = patientSnap.data().usedCount || 0;
+          await patientRef.update({
+            usedCount: currentCount + 1,
+            lastUsedAt: now
+          });
+          console.log(`[sessions/start] Incremented usedCount for patient ${patientId}: ${currentCount} -> ${currentCount + 1}`);
+        }
+      } catch (patientErr) {
+        console.error(`[sessions/start] Failed to update patient usedCount:`, patientErr);
+        // 患者カウント更新エラーはセッション作成を妨げない
+      }
+    }
+    
     res.json({ ok: true, id: sid, sessionId: sid });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
@@ -2583,32 +2604,36 @@ app.post("/api/admin/patients/generate", requireAuth, requireAdmin, async (req, 
 【症状キーワード】
 ${symptomKeywords}
 
+【患者の性別】
+⚠️ 重要：性別は${gender === 'male' ? '男性' : '女性'}で固定です。必ずこの性別に合った名前とプロフィールを作成してください。
+
 【患者の会話言語】
 ${languageNames[language] || language}
 ※注意：患者は${languageNames[language]}で話しますが、プロフィール情報は必ず日本語で記述してください。
 
 【生成する情報】
-1. 氏名（${languageNames[language]}の一般的な名前）
+1. 氏名（${languageNames[language]}の一般的な${gender === 'male' ? '男性' : '女性'}の名前）
+   - 必ず${gender === 'male' ? '男性' : '女性'}の名前にしてください
 2. 年齢（症状に適した年齢、数値のみ）
-3. 性別（男性 or 女性）
+3. 性別: ${gender === 'male' ? '男性' : '女性'}（指定済み・変更不可）
 4. 年齢帯（子供、大人、高齢者のいずれか）
 5. シナリオ（症状から適切なものを選択：chest（胸痛）、head（頭痛）、abdomen（腹痛）、breath（呼吸困難））
-6. 詳細プロフィール（必ず日本語で200-300文字程度）
-   - 主訴
-   - 現病歴
-   - 既往歴（関連するもの）
-   - 生活背景
-   - 現在の症状の詳細
+6. AI用詳細プロフィール（必ず日本語で200-300文字程度）：
+   - ${gender === 'male' ? '男性' : '女性'}患者として主訴、現病歴、既往歴、生活背景、現在の症状の詳細など、AIが患者役を演じるために必要な完全な情報
+7. 表示用プロフィール（必ず日本語で80-120文字程度）：
+   - 学生が見る最小限の情報のみ（年齢、性別、主訴の概要のみ）
+   - 症状の詳細は含めず、学生が問診で聞き出すべき情報は隠す
 
 【出力形式】（必ずこの形式で日本語で回答してください）
-氏名: [名前]
+氏名: [${gender === 'male' ? '男性' : '女性'}の名前]
 年齢: [数値のみ]
-性別: [男性 または 女性]
+性別: ${gender === 'male' ? '男性' : '女性'}
 年齢帯: [子供 または 大人 または 高齢者]
 シナリオ: [chest または head または abdomen または breath]
-プロフィール: [日本語で詳細な説明]
+AI用プロフィール: [日本語で詳細な説明]
+表示用プロフィール: [日本語で最小限の説明]
 
-リアルで臨床的に妥当な患者を作成してください。プロフィールは必ず日本語で記述してください。`;
+リアルで臨床的に妥当な${gender === 'male' ? '男性' : '女性'}患者を作成してください。プロフィールは必ず日本語で記述してください。`;
 
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -2790,6 +2815,7 @@ app.patch("/api/admin/patients/:id", requireAuth, requireAdmin, async (req, res)
     const ageBand = (b.ageBand != null) ? mapAgeBand(b.ageBand) : cur.ageBand;
     const language = (b.language != null) ? mapLang(b.language) : cur.language;
     const profile = (b.profile != null) ? String(b.profile) : cur.profile;
+    const displayProfile = (b.displayProfile != null) ? String(b.displayProfile) : cur.displayProfile;
     const symptomKeywords = (b.symptomKeywords != null) ? String(b.symptomKeywords).trim() : cur.symptomKeywords;
     const brokenJapanese = (b.brokenJapanese != null) ? Boolean(b.brokenJapanese) : (cur.brokenJapanese || false);
     const timeLimit = (b.timeLimit != null && Number.isFinite(b.timeLimit) && b.timeLimit > 0) ? b.timeLimit : (cur.timeLimit || 180);
@@ -2806,6 +2832,7 @@ app.patch("/api/admin/patients/:id", requireAuth, requireAdmin, async (req, res)
       ageBand,
       language,
       profile,
+      displayProfile,
       symptomKeywords,
       brokenJapanese,
       scenario,

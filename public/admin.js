@@ -3136,10 +3136,10 @@ async function editAdminPatient(patientId, patientsList) {
   displayGeneratedProfile({
     name: patient.name,
     age: patient.age,
-    gender: patient.gender,
     ageBand: patient.ageBand,
-    profileText: patient.profile
-  }, patient.symptomKeywords, patient.language, patient.brokenJapanese);
+    profileText: patient.profile,
+    displayProfileText: patient.displayProfile || patient.profile
+  }, patient.gender, patient.symptomKeywords, patient.language, patient.brokenJapanese);
 
   // Version 3.42: 想定バイタル異常をフォームに設定
   if (patient.expectedVitals) {
@@ -3205,6 +3205,7 @@ async function updateAdminPatient(patientId) {
   const genderSelect = $("pcPatientGender");
   const ageBandSelect = $("pcPatientAgeBand");
   const profileTextarea = $("pcProfileText");
+  const displayProfileTextarea = $("pcDisplayProfileText");
   const timeLimitSelect = $("pcTimeLimit");
   const symptomInput = $("pcSymptomKeywords");
   const languageSelect = $("pcLanguage");
@@ -3217,6 +3218,7 @@ async function updateAdminPatient(patientId) {
   const gender = genderSelect ? genderSelect.value : "male";
   const ageBand = ageBandSelect ? ageBandSelect.value : "adult";
   const profileText = profileTextarea ? profileTextarea.value.trim() : "";
+  const displayProfileText = displayProfileTextarea ? displayProfileTextarea.value.trim() : "";
   const timeLimit = timeLimitSelect ? parseInt(timeLimitSelect.value, 10) : 180;
   const symptomKeywords = symptomInput ? symptomInput.value.trim() : "";
   const language = languageSelect ? languageSelect.value : "ja";
@@ -3261,9 +3263,9 @@ async function updateAdminPatient(patientId) {
   
   console.log('[updateAdminPatient] Total custom vitals:', customVitals.length, customVitals);
 
-  if (!name || !profileText || !symptomKeywords) {
+  if (!name || !profileText || !displayProfileText || !symptomKeywords) {
     if (statusSpan) {
-      statusSpan.textContent = "エラー: 患者氏名、症状キーワード、プロフィール詳細は必須です";
+      statusSpan.textContent = "エラー: 患者氏名、症状キーワード、プロフィール詳細（AI用・表示用）は必須です";
       statusSpan.style.color = "#ef4444";
     }
     return;
@@ -3295,6 +3297,7 @@ async function updateAdminPatient(patientId) {
         language,
         brokenJapanese,
         profile: profileText,
+        displayProfile: displayProfileText,
         symptomKeywords,
         timeLimit,
         expectedVitals,
