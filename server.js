@@ -259,9 +259,14 @@ async function ensureUserDoc(uid, email, name) {
       if (email && cur.email !== email) patch.email = email;
       // 名前は既存の値がない場合のみ設定（管理画面で設定された名前を保護）
       if (name && !cur.name) patch.name = name;
-      // 管理者メールの場合は常にroleをadminに設定
-      const correctRole = isAdminEmail(email) ? "admin" : "user";
-      if (cur.role !== correctRole) patch.role = correctRole;
+      // roleは既に設定されている場合は保護（管理画面で設定された権限を上書きしない）
+      // ただし、gmhata@gmail.comの場合は常にadminに設定
+      if (isAdminEmail(email) && cur.role !== "admin") {
+        patch.role = "admin";
+      } else if (!cur.role) {
+        // roleが未設定の場合のみデフォルト値を設定
+        patch.role = "user";
+      }
       if (Object.keys(patch).length) {
         console.log('[ensureUserDoc] Updating user with patch:', patch);
         await uref.set(patch, { merge: true });
