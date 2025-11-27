@@ -117,6 +117,7 @@ async function refreshUsers(){
     pane.querySelectorAll(".roleSel").forEach(sel=>{
       sel.addEventListener("change", async ()=>{
         const tr = sel.closest("tr"); const uid = tr?.dataset?.uid;
+        const originalValue = sel.value === "admin" ? "user" : "admin";
         try{
           sel.disabled = true;
           const t2 = await getIdToken();
@@ -127,9 +128,18 @@ async function refreshUsers(){
           });
           const j2 = await r2.json().catch(()=>({}));
           if (!r2.ok) throw new Error(j2?.error || `HTTP ${r2.status}`);
+          
+          // 成功メッセージを表示
+          const statusSpan = document.createElement("span");
+          statusSpan.textContent = " ✓ 保存しました";
+          statusSpan.style.color = "#10b981";
+          statusSpan.style.marginLeft = "8px";
+          statusSpan.style.fontSize = "12px";
+          tr.appendChild(statusSpan);
+          setTimeout(() => statusSpan.remove(), 2000);
         }catch(e){
           alert("更新失敗: " + (e.message||e));
-          sel.value = (sel.value==="admin") ? "user" : "admin";
+          sel.value = originalValue;
         }finally{
           sel.disabled = false;
         }

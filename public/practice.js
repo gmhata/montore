@@ -1407,8 +1407,46 @@ async function startTalk(cfg){
     }
     window.__showConversationText = showConversationText;
     
-    setPill("準備中…"); setVideoState("idle"); startProgress(); show("screen-talk");
+    setPill("準備中…"); 
+    show("screen-talk");
     if (cfg.mode==="test" && cfg.patient?.no) setPatientBadge(cfg.patient.no); else setPatientBadge(null);
+    
+    // 動画読み込み完了を待機
+    const video = $("tkVideo");
+    if (video) {
+      await new Promise((resolve) => {
+        if (video.readyState >= 3) {
+          console.log('[startTalk] Video already loaded');
+          resolve();
+        } else {
+          console.log('[startTalk] Waiting for video to load...');
+          const onCanPlay = () => {
+            console.log('[startTalk] Video loaded and ready');
+            video.removeEventListener('canplaythrough', onCanPlay);
+            video.removeEventListener('error', onError);
+            resolve();
+          };
+          const onError = (e) => {
+            console.warn('[startTalk] Video load error, continuing anyway:', e);
+            video.removeEventListener('canplaythrough', onCanPlay);
+            video.removeEventListener('error', onError);
+            resolve();
+          };
+          video.addEventListener('canplaythrough', onCanPlay);
+          video.addEventListener('error', onError);
+          // タイムアウト: 5秒経過しても読み込まれなければ続行
+          setTimeout(() => {
+            console.warn('[startTalk] Video load timeout, continuing...');
+            video.removeEventListener('canplaythrough', onCanPlay);
+            video.removeEventListener('error', onError);
+            resolve();
+          }, 5000);
+        }
+      });
+    }
+    
+    setVideoState("idle"); 
+    startProgress();
 
     // 評価ボタンを無効化（接続確立後に有効化）
     const finishBtn = $("tkFinish");
@@ -1697,7 +1735,7 @@ async function startTalk(cfg){
           voice: voiceName,
           modalities:["text","audio"],
           instructions: instr,
-          turn_detection:{ type:"server_vad", silence_duration_ms:700, prefix_padding_ms:200 }
+          turn_detection: null  // 患者が先に話し始めないよう無効化
         }
       })); }catch{}
 
@@ -1772,6 +1810,18 @@ async function startTalk(cfg){
           nurseBuf="";
           // Update speech visualization after nurse speaks
           visualizeSpeechMetrics();
+          
+          // turn_detection無効のため、看護師が話し終わったら手動で応答を要求
+          setTimeout(() => {
+            try {
+              if (dc && dc.readyState === "open") {
+                dc.send(JSON.stringify({ type: "response.create" }));
+                console.log('[Nurse] Requesting patient response after nurse speech');
+              }
+            } catch(e) {
+              console.error('[Nurse] Failed to request response:', e);
+            }
+          }, 300); // 300ms待機してから応答要求
           break;
         }
 
@@ -1787,7 +1837,11 @@ async function startTalk(cfg){
         case "response.output_text.done": {
           const t=(ev.text||patientBuf||"").trim();
           console.log('[Patient] Output text done:', {text: ev.text, patientBuf, final: t});
-          if(t){ logAndPostPatient(t); setSubtitle(t, "patient"); }
+          if(t){ 
+            logAndPostPatient(t); 
+            setSubtitle(t, "patient"); 
+            // 患者の発話ではキーワードチェックをしない（看護師の発話のみチェック）
+          }
           patientBuf="";
           break;
         }
@@ -3707,10 +3761,10 @@ function checkForExamKeywords(text) {
 
   // デフォルトの個別キーワード定義（常に使用）
   const defaultExamKeywords = {
-    inspection: ['視診', '見ます', '見て', '見せて', '観察', '確認', 'inspection', 'look', 'observe', 'visual', 'show me'],
-    palpation: ['触診', '触ります', '触って', '触れ', '押して', '押します', 'palpation', 'touch', 'feel', 'press', '腹部', 'お腹'],
-    auscultation: ['聴診', '聴きます', '聴いて', '聴かせ', '音', '聞き', 'auscultation', 'listen', 'sounds', '心音', '呼吸音', '肺の音', '胸の音'],
-    percussion: ['打診', '打ちます', '叩いて', '叩き', 'percussion', 'tap', 'percuss']
+    inspection: ['視診', '見ます', '見て', '見せて', '観察', '確認', '拝見', '診ます', '診させて', 'inspection', 'look', 'observe', 'visual', 'show me', '目で', '視て', 'みます', 'みせて'],
+    palpation: ['触診', '触ります', '触って', '触れ', '押して', '押します', '触らせて', '触診させて', 'palpation', 'touch', 'feel', 'press', '腹部', 'お腹', 'さわ', 'おし'],
+    auscultation: ['聴診', '聴きます', '聴いて', '聴かせ', '音', '聞き', '聴診器', '聞かせて', 'auscultation', 'listen', 'sounds', '心音', '呼吸音', '肺の音', '胸の音', '聞いて', 'きき'],
+    percussion: ['打診', '打ちます', '叩いて', '叩き', '打診させて', 'percussion', 'tap', 'percuss', 'たた', '叩かせ']
   };
 
   // シナリオ設定とデフォルトをマージ（デフォルトを常に含める）
