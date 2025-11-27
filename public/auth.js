@@ -20,7 +20,7 @@ const firebaseConfig = window.FIREBASE_CONFIG || {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
-// セッションストレージで永続化（リダイレクト対応、ブラウザ閉じるとログアウト）
+// ブラウザセッションで永続化（ブラウザを閉じるとログアウト）
 (async()=>{ try{ await setPersistence(auth, browserSessionPersistence); }catch{} })();
 
 // 外部公開: IDトークン

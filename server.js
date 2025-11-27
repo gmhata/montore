@@ -26,6 +26,13 @@ const app = express();
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "10mb" }));
 
+// Firebase Authentication ポップアップ対応: COOPヘッダーを削除
+app.use((req, res, next) => {
+  res.removeHeader('Cross-Origin-Opener-Policy');
+  res.removeHeader('Cross-Origin-Embedder-Policy');
+  next();
+});
+
 // Multer configuration for audio file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
