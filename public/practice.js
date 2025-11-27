@@ -1361,7 +1361,7 @@ async function downloadPatientPdf(){
   </div>
   <div class="section">
     <div class="section-title">症状・プロフィール</div>
-    <div class="section-content">${p.profile || "（情報なし）"}</div>
+    <div class="section-content">${p.displayProfile || p.profile || "（情報なし）"}</div>
   </div>
   <script>
     window.onload = function() {

@@ -2426,6 +2426,7 @@ app.get("/api/test-patients", requireAuth, async (_req, res)=>{
         brokenJapanese: p.brokenJapanese || false,
         scenario: p.scenario || "chest",
         profile: p.profile || "", 
+        displayProfile: p.displayProfile || p.profile || "",
         timeLimit: p.timeLimit || 180, 
         videos: p.videos || {},
         expectedVitals: p.expectedVitals || null,
