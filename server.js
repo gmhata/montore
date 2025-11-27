@@ -2641,28 +2641,28 @@ ${languageNames[language] || language}
     // パース
     const nameMatch = generatedText.match(/氏名[：:]\s*(.+?)(?:\n|$)/);
     const ageMatch = generatedText.match(/年齢[：:]\s*(\d+)/);
-    const genderMatch = generatedText.match(/性別[：:]\s*(男性|女性)/);
     const ageBandMatch = generatedText.match(/年齢帯[：:]\s*(子供|大人|高齢者)/);
     const scenarioMatch = generatedText.match(/シナリオ[：:]\s*(chest|head|abdomen|breath)/);
-    const profileMatch = generatedText.match(/プロフィール[：:]\s*([\s\S]+?)(?:\n\n|$)/);
+    const aiProfileMatch = generatedText.match(/AI用プロフィール[：:]\s*([\s\S]+?)(?=\n表示用プロフィール[：:]|\n\n|$)/);
+    const displayProfileMatch = generatedText.match(/表示用プロフィール[：:]\s*([\s\S]+?)(?:\n\n|$)/);
 
     const name = nameMatch ? nameMatch[1].trim() : '患者';
     const age = ageMatch ? parseInt(ageMatch[1]) : 40;
-    const gender = genderMatch && genderMatch[1] === "男性" ? "male" : "female";
     const ageBandText = ageBandMatch ? ageBandMatch[1] : "大人";
     const ageBand = ageBandText === "子供" ? "child" : ageBandText === "高齢者" ? "elderly" : "adult";
     const scenario = scenarioMatch ? scenarioMatch[1] : "chest";
-    const profileText = profileMatch ? profileMatch[1].trim() : generatedText;
+    const profileText = aiProfileMatch ? aiProfileMatch[1].trim() : generatedText;
+    const displayProfileText = displayProfileMatch ? displayProfileMatch[1].trim() : profileText;
 
     res.json({
       ok: true,
       profile: {
         name,
         age,
-        gender,
         ageBand,
         scenario,
-        profileText
+        profileText,
+        displayProfileText
       }
     });
 
@@ -2686,6 +2686,7 @@ app.post("/api/admin/patients", requireAuth, requireAdmin, async (req, res) => {
     const ageBand = mapAgeBand(b.ageBand);
     const language = mapLang(b.language);
     const profile = (b.profile || "").toString();
+    const displayProfile = (b.displayProfile || "").toString();
     const symptomKeywords = (b.symptomKeywords || "").toString().trim();
     const brokenJapanese = Boolean(b.brokenJapanese);
     const timeLimit = Number.isFinite(b.timeLimit) && b.timeLimit > 0 ? b.timeLimit : 180;
@@ -2697,8 +2698,8 @@ app.post("/api/admin/patients", requireAuth, requireAdmin, async (req, res) => {
     const expectedVitals = b.expectedVitals || null;
     const customVitals = b.customVitals || null;
 
-    if (!name || !profile || !symptomKeywords) {
-      return res.status(400).json({ ok: false, error: "name, profile, and symptomKeywords are required" });
+    if (!name || !profile || !displayProfile || !symptomKeywords) {
+      return res.status(400).json({ ok: false, error: "name, profile, displayProfile, and symptomKeywords are required" });
     }
 
     const patientNo = await nextCounter("patientNo");
@@ -2721,6 +2722,7 @@ app.post("/api/admin/patients", requireAuth, requireAdmin, async (req, res) => {
       ageBand,
       language,
       profile,
+      displayProfile,
       symptomKeywords,
       brokenJapanese,
       scenario,

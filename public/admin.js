@@ -2230,16 +2230,16 @@ async function mountPatientCreationPane() {
     <div class="card" style="padding:20px; margin-bottom:24px; background:#f9fafb">
       <h4 style="margin-top:0; color:#ec4899">新規患者プロフィール生成</h4>
 
-      <div style="margin-bottom:20px">
-        <label style="display:block; margin-bottom:8px; font-weight:600">症状キーワード <span class="muted small">（必須）</span></label>
-        <textarea id="pcSymptomKeywords" rows="2" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px"
-          placeholder="例: 胸痛、息切れ、冷や汗"></textarea>
-        <div class="muted small" style="margin-top:4px">患者が訴える主な症状をカンマ区切りで入力してください</div>
-      </div>
-
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px">
+      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-bottom:20px">
         <div>
-          <label style="display:block; margin-bottom:8px; font-weight:600">言語</label>
+          <label style="display:block; margin-bottom:8px; font-weight:600">性別 <span class="muted small">（必須）</span></label>
+          <select id="pcGenderInput" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px">
+            <option value="male">男性</option>
+            <option value="female">女性</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block; margin-bottom:8px; font-weight:600">言語 <span class="muted small">（必須）</span></label>
           <select id="pcLanguage" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px">
             <option value="ja">日本語</option>
             <option value="en">英語</option>
@@ -2248,18 +2248,23 @@ async function mountPatientCreationPane() {
             <option value="th">タイ語</option>
           </select>
         </div>
-
         <div id="pcBrokenJapaneseContainer" style="display:none">
           <label style="display:block; margin-bottom:8px; font-weight:600">カタコト日本語</label>
           <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:10px; background:white; border:1px solid #d1d5db; border-radius:6px">
             <input type="checkbox" id="pcBrokenJapanese" style="width:20px; height:20px; cursor:pointer">
-            <span>簡単な日本語で会話する</span>
+            <span style="font-size:13px">簡単な日本語</span>
           </label>
-          <div class="muted small" style="margin-top:4px">
-            チェックすると、英語患者が約100文字程度の簡単な日本語を理解・話せるようになります
-          </div>
         </div>
       </div>
+
+      <div style="margin-bottom:20px">
+        <label style="display:block; margin-bottom:8px; font-weight:600">症状キーワード <span class="muted small">（必須）</span></label>
+        <textarea id="pcSymptomKeywords" rows="2" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px"
+          placeholder="例: 胸痛、息切れ、冷や汗"></textarea>
+        <div class="muted small" style="margin-top:4px">患者が訴える主な症状をカンマ区切りで入力してください</div>
+      </div>
+
+
 
       <div style="margin-top:20px">
         <button id="pcGenerateBtn" class="primary" style="padding:12px 24px; font-size:15px">
@@ -2305,10 +2310,18 @@ async function mountPatientCreationPane() {
         </div>
 
         <div style="margin-bottom:20px">
-          <label style="display:block; margin-bottom:6px; font-weight:600; color:#6b7280">患者プロフィール詳細</label>
+          <label style="display:block; margin-bottom:6px; font-weight:600; color:#6b7280">患者プロフィール詳細（AI用）</label>
           <textarea id="pcProfileText" rows="8" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; line-height:1.6; min-height:180px; resize:vertical"></textarea>
           <div class="muted small" style="margin-top:4px">
             この内容がAI患者のベースとなります。症状の詳細、経過、患者の背景などを含めてください。
+          </div>
+        </div>
+
+        <div style="margin-bottom:20px">
+          <label style="display:block; margin-bottom:6px; font-weight:600; color:#6b7280">表示用患者プロフィール（学生向け）</label>
+          <textarea id="pcDisplayProfileText" rows="5" style="width:100%; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; line-height:1.6; min-height:120px; resize:vertical"></textarea>
+          <div class="muted small" style="margin-top:4px">
+            学生が患者選択時に見る情報です。問診で聞き出すべき情報は含めず、最小限にしてください。
           </div>
         </div>
 
@@ -2570,12 +2583,14 @@ async function generatePatientProfile() {
     saveBtn.dataset.editPatientId = "";
   }
   
+  const genderInput = $("pcGenderInput");
   const symptomInput = $("pcSymptomKeywords");
   const languageSelect = $("pcLanguage");
   const brokenJapaneseCheckbox = $("pcBrokenJapanese");
   const statusSpan = $("pcGenerateStatus");
   const generateBtn = $("pcGenerateBtn");
 
+  const gender = genderInput ? genderInput.value : "male";
   const symptomKeywords = symptomInput ? symptomInput.value.trim() : "";
   const language = languageSelect ? languageSelect.value : "ja";
   const brokenJapanese = brokenJapaneseCheckbox ? brokenJapaneseCheckbox.checked : false;
@@ -2607,6 +2622,7 @@ async function generatePatientProfile() {
         "Authorization": `Bearer ${token}`
       },
       body: JSON.stringify({
+        gender,
         symptomKeywords,
         language,
         brokenJapanese
@@ -2628,7 +2644,7 @@ async function generatePatientProfile() {
     }
 
     // プレビューエリアに生成結果を表示
-    displayGeneratedProfile(result.profile, symptomKeywords, language, brokenJapanese);
+    displayGeneratedProfile(result.profile, gender, symptomKeywords, language, brokenJapanese);
 
   } catch (error) {
     console.error("[generatePatientProfile] Error:", error);
@@ -2643,7 +2659,7 @@ async function generatePatientProfile() {
 }
 
 // 生成されたプロフィールをプレビューエリアに表示
-function displayGeneratedProfile(profile, symptomKeywords, language, brokenJapanese) {
+function displayGeneratedProfile(profile, gender, symptomKeywords, language, brokenJapanese) {
   const previewArea = $("pcPreviewArea");
   if (!previewArea) return;
 
@@ -2653,12 +2669,14 @@ function displayGeneratedProfile(profile, symptomKeywords, language, brokenJapan
   const genderSelect = $("pcPatientGender");
   const ageBandSelect = $("pcPatientAgeBand");
   const profileTextarea = $("pcProfileText");
+  const displayProfileTextarea = $("pcDisplayProfileText");
 
   if (nameInput) nameInput.value = profile.name || "";
   if (ageInput) ageInput.value = profile.age || "";
-  if (genderSelect) genderSelect.value = profile.gender || "male";
+  if (genderSelect) genderSelect.value = gender || "male";  // 入力された性別を使用
   if (ageBandSelect) ageBandSelect.value = profile.ageBand || "adult";
   if (profileTextarea) profileTextarea.value = profile.profileText || "";
+  if (displayProfileTextarea) displayProfileTextarea.value = profile.displayProfileText || "";
 
   // プレビューエリアを表示
   previewArea.style.display = "block";
@@ -2676,6 +2694,7 @@ async function saveAdminPatient() {
   const genderSelect = $("pcPatientGender");
   const ageBandSelect = $("pcPatientAgeBand");
   const profileTextarea = $("pcProfileText");
+  const displayProfileTextarea = $("pcDisplayProfileText");
   const timeLimitSelect = $("pcTimeLimit");
   const symptomInput = $("pcSymptomKeywords");
   const languageSelect = $("pcLanguage");
@@ -2688,6 +2707,7 @@ async function saveAdminPatient() {
   const gender = genderSelect ? genderSelect.value : "male";
   const ageBand = ageBandSelect ? ageBandSelect.value : "adult";
   const profileText = profileTextarea ? profileTextarea.value.trim() : "";
+  const displayProfileText = displayProfileTextarea ? displayProfileTextarea.value.trim() : "";
   const timeLimit = timeLimitSelect ? parseInt(timeLimitSelect.value, 10) : 180;
   const symptomKeywords = symptomInput ? symptomInput.value.trim() : "";
   const language = languageSelect ? languageSelect.value : "ja";
@@ -2732,9 +2752,9 @@ async function saveAdminPatient() {
   
   console.log('[saveAdminPatient] Total custom vitals:', customVitals.length, customVitals);
 
-  if (!name || !profileText || !symptomKeywords) {
+  if (!name || !profileText || !displayProfileText || !symptomKeywords) {
     if (statusSpan) {
-      statusSpan.textContent = "エラー: 患者氏名、症状キーワード、プロフィール詳細は必須です";
+      statusSpan.textContent = "エラー: 患者氏名、症状キーワード、プロフィール詳細（AI用・表示用）は必須です";
       statusSpan.style.color = "#ef4444";
     }
     return;
@@ -2766,6 +2786,7 @@ async function saveAdminPatient() {
         language,
         brokenJapanese,
         profile: profileText,
+        displayProfile: displayProfileText,
         symptomKeywords,
         timeLimit,
         expectedVitals,
