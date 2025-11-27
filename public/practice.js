@@ -1695,6 +1695,18 @@ async function startTalk(cfg){
               console.log('[Modal] Exam keywords detected:', examItems, 'in:', transcript);
               showExamModal(examItems);
             }
+            
+            // Web Speech使用時も患者の応答を要求
+            setTimeout(() => {
+              try {
+                if (dc && dc.readyState === "open") {
+                  dc.send(JSON.stringify({ type: "response.create" }));
+                  console.log('[Nurse] Requesting patient response after Web Speech (final)');
+                }
+              } catch(e) {
+                console.error('[Nurse] Failed to request response:', e);
+              }
+            }, 300);
           } else {
             interim = transcript;
             setSubtitle(interim + '...', "nurse");
