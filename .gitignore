@@ -7,7 +7,8 @@ node_modules/
 .env.*.local
 
 # Firebase configuration (contains API keys)
-public/firebase-config.js
+# ⚠️ TEMPORARY: Uncommenting to allow deployment - should use env vars in production
+# public/firebase-config.js
 
 # Logs
 logs
