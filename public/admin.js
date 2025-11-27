@@ -116,17 +116,37 @@ async function refreshUsers(){
 
     pane.querySelectorAll(".roleSel").forEach(sel=>{
       sel.addEventListener("change", async ()=>{
-        const tr = sel.closest("tr"); const uid = tr?.dataset?.uid;
-        const originalValue = sel.value === "admin" ? "user" : "admin";
+        const tr = sel.closest("tr"); 
+        const uid = tr?.dataset?.uid;
+        if (!uid) {
+          alert("ユーザーIDが見つかりません");
+          return;
+        }
+        
+        // 変更前の値を保存（changeイベントは変更後に発火するので、逆に計算）
+        const newValue = sel.value;
+        const originalValue = (newValue === "admin") ? "user" : "admin";
+        
+        console.log('[Role Change]', {uid, from: originalValue, to: newValue});
+        
         try{
           sel.disabled = true;
           const t2 = await getIdToken();
+          if (!t2) {
+            throw new Error("認証トークンが取得できません");
+          }
+          
+          console.log('[Role Change] Sending PATCH request:', {uid, role: newValue});
+          
           const r2 = await fetch(`/api/admin/users/${uid}`, {
             method:"PATCH",
             headers:{ "Content-Type":"application/json", Authorization:"Bearer "+t2 },
-            body: JSON.stringify({ role: sel.value })
+            body: JSON.stringify({ role: newValue })
           });
           const j2 = await r2.json().catch(()=>({}));
+          
+          console.log('[Role Change] Response:', {status: r2.status, ok: r2.ok, body: j2});
+          
           if (!r2.ok) throw new Error(j2?.error || `HTTP ${r2.status}`);
           
           // 成功メッセージを表示
@@ -135,9 +155,13 @@ async function refreshUsers(){
           statusSpan.style.color = "#10b981";
           statusSpan.style.marginLeft = "8px";
           statusSpan.style.fontSize = "12px";
+          statusSpan.style.fontWeight = "600";
           tr.appendChild(statusSpan);
-          setTimeout(() => statusSpan.remove(), 2000);
+          setTimeout(() => statusSpan.remove(), 3000);
+          
+          console.log('[Role Change] Success!');
         }catch(e){
+          console.error('[Role Change] Error:', e);
           alert("更新失敗: " + (e.message||e));
           sel.value = originalValue;
         }finally{

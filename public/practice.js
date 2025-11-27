@@ -802,13 +802,23 @@ let preloaded = { idle:false, speaking:false };
 function primeVideos(){
   const VS = window.__VIDEO_SRC || VIDEO_SRC_FALLBACK;
   const preload = (src,key)=>{
-    if (preloaded[key]) return;
+    // 2回目以降も確実にpreloadするため、フラグをリセット
+    preloaded[key] = false;
     const v = document.createElement("video");
     v.src = src; v.preload="auto"; v.muted=true; v.playsInline=true; v.style.display="none";
-    const done=()=>{ preloaded[key]=true; try{ document.body.removeChild(v);}catch{} };
-    v.oncanplaythrough=done; v.onerror=done;
+    const done=()=>{ 
+      preloaded[key]=true; 
+      console.log('[primeVideos] Preloaded:', key, src);
+      try{ document.body.removeChild(v);}catch{} 
+    };
+    v.oncanplaythrough=done; 
+    v.onerror=(e)=>{ 
+      console.warn('[primeVideos] Preload error for', key, ':', e);
+      done(); 
+    };
     document.body.appendChild(v); v.load();
   };
+  console.log('[primeVideos] Starting preload...');
   preload(VS.idle,"idle"); preload(VS.speaking,"speaking");
 }
 function setVideoState(mode){
@@ -818,27 +828,60 @@ function setVideoState(mode){
     return;
   }
   
-  // Version 3.49: デバッグログ追加
-  console.log('[setVideoState] Video element:', v);
-  console.log('[setVideoState] Video display:', window.getComputedStyle(v).display);
-  console.log('[setVideoState] Video visibility:', window.getComputedStyle(v).visibility);
-  console.log('[setVideoState] Video opacity:', window.getComputedStyle(v).opacity);
-  console.log('[setVideoState] Video z-index:', window.getComputedStyle(v).zIndex);
+  console.log('[setVideoState] Setting video state to:', mode);
   
   const VS = window.__VIDEO_SRC || VIDEO_SRC_FALLBACK;
   const src = (mode==="speaking") ? (VS.speaking || VIDEO_SRC_FALLBACK.speaking)
                                   : (VS.idle     || VIDEO_SRC_FALLBACK.idle);
-  if (v.getAttribute("data-src") !== src){
+  
+  const currentSrc = v.getAttribute("data-src");
+  const needsReload = (currentSrc !== src) || (v.readyState < 2);
+  
+  if (needsReload){
+    console.log('[setVideoState] Reloading video - currentSrc:', currentSrc, 'newSrc:', src, 'readyState:', v.readyState);
     v.setAttribute("data-src", src);
     v.src = src;
     v.load();
+    
+    // 動画読み込み完了を待つ
+    return new Promise((resolve) => {
+      if (v.readyState >= 3) {
+        console.log('[setVideoState] Video already loaded');
+        playVideo();
+        resolve();
+      } else {
+        const onCanPlay = () => {
+          console.log('[setVideoState] Video loaded');
+          v.removeEventListener('canplaythrough', onCanPlay);
+          v.removeEventListener('error', onError);
+          playVideo();
+          resolve();
+        };
+        const onError = (e) => {
+          console.warn('[setVideoState] Video load error:', e);
+          v.removeEventListener('canplaythrough', onCanPlay);
+          v.removeEventListener('error', onError);
+          playVideo(); // エラーでも再生試行
+          resolve();
+        };
+        v.addEventListener('canplaythrough', onCanPlay);
+        v.addEventListener('error', onError);
+      }
+    });
+  } else {
+    console.log('[setVideoState] Video already loaded, just playing - readyState:', v.readyState);
+    playVideo();
+    return Promise.resolve();
   }
-  if (mode==="speaking"){ try{ v.currentTime = 0; }catch{} }
-  v.muted = true; v.loop = true; v.playsInline = true;
-  const tryPlay = ()=> v.play().catch(()=>{});
-  tryPlay(); document.addEventListener("pointerdown", tryPlay, { once:true });
   
-  console.log('[setVideoState] Video state set, mode:', mode, 'src:', src);
+  function playVideo() {
+    if (mode==="speaking"){ try{ v.currentTime = 0; }catch{} }
+    v.muted = true; v.loop = true; v.playsInline = true;
+    const tryPlay = ()=> v.play().catch((e)=>console.warn('[setVideoState] Play error:', e));
+    tryPlay(); 
+    document.addEventListener("pointerdown", tryPlay, { once:true });
+    console.log('[setVideoState] Video playing, mode:', mode);
+  }
 }
 function appendMsg(who, text){
   const d=document.createElement("div");
@@ -1747,7 +1790,8 @@ async function startTalk(cfg){
               type:"session.update",
               session:{
                 voice: voiceName,
-                instructions: instr  // 言語設定を強制的に維持
+                instructions: instr,  // 言語設定を強制的に維持
+                turn_detection: null  // turn_detection無効化を維持
               }
             }));
           }
@@ -1778,6 +1822,20 @@ async function startTalk(cfg){
         case "input_audio_buffer.speech_started":
           setPill("看護師: 入力中…");
           setSubtitle("(音声入力中...)", "nurse");
+          break;
+        
+        case "input_audio_buffer.speech_stopped":
+          // 看護師が話し終わったタイミングで患者の応答を要求（より確実なタイミング）
+          setTimeout(() => {
+            try {
+              if (dc && dc.readyState === "open") {
+                dc.send(JSON.stringify({ type: "response.create" }));
+                console.log('[Nurse] Requesting patient response after speech stopped');
+              }
+            } catch(e) {
+              console.error('[Nurse] Failed to request response on speech_stopped:', e);
+            }
+          }, 200);
           break;
 
         case "input_audio_transcription.started":
@@ -1812,6 +1870,8 @@ async function startTalk(cfg){
           visualizeSpeechMetrics();
           
           // turn_detection無効のため、看護師が話し終わったら手動で応答を要求
+          // input_audio_buffer.speech_stopped イベントを待ってから応答要求する方が確実
+          // ここでは即座に要求
           setTimeout(() => {
             try {
               if (dc && dc.readyState === "open") {
@@ -1821,7 +1881,7 @@ async function startTalk(cfg){
             } catch(e) {
               console.error('[Nurse] Failed to request response:', e);
             }
-          }, 300); // 300ms待機してから応答要求
+          }, 100); // 100msに短縮
           break;
         }
 
