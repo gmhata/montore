@@ -3,7 +3,7 @@ import {
   getAuth, onAuthStateChanged,
   signInWithPopup, signInWithRedirect, getRedirectResult,
   GoogleAuthProvider, signOut, getIdToken,
-  setPersistence, inMemoryPersistence
+  setPersistence, browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 
 // Firebase Configuration - loaded from environment/build time
@@ -20,8 +20,8 @@ const firebaseConfig = window.FIREBASE_CONFIG || {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 
-// 自動ログインを抑止（永続なし）
-(async()=>{ try{ await setPersistence(auth, inMemoryPersistence); }catch{} })();
+// セッションストレージで永続化（リダイレクト対応、ブラウザ閉じるとログアウト）
+(async()=>{ try{ await setPersistence(auth, browserSessionPersistence); }catch{} })();
 
 // 外部公開: IDトークン
 window.getIdTokenAsync = async () => {
