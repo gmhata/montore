@@ -930,10 +930,11 @@ document.addEventListener("DOMContentLoaded", ()=>{
     btnLogin.addEventListener("click", async ()=>{
       try {
         console.log("[auth] Login button clicked");
-        if (window.firebaseSignInWithPopup) {
-          await window.firebaseSignInWithPopup();
+        // Use redirect instead of popup to avoid COOP issues
+        if (window.firebaseSignInWithRedirect) {
+          await window.firebaseSignInWithRedirect();
         } else {
-          console.error("[auth] firebaseSignInWithPopup not available");
+          console.error("[auth] firebaseSignInWithRedirect not available");
           alert("認証機能が読み込まれていません。ページを再読み込みしてください。");
         }
       } catch (e) {
