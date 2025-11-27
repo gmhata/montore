@@ -81,6 +81,7 @@ async function refreshUsers(){
     if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
 
     const rows = Array.isArray(j.users) ? j.users : [];
+    console.log('[refreshUsers] Fetched users from Firestore:', rows.map(u => ({email: u.email, role: u.role})));
     pane.innerHTML = `
       <h3>ユーザー管理</h3>
       <div class="muted small" style="margin-bottom:.5rem">権限：一般／管理者 を切り替えできます。名前・備考欄をダブルクリックで編集できます。</div>
