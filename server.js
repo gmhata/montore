@@ -2577,16 +2577,19 @@ app.post("/api/admin/patients/generate", requireAuth, requireAdmin, async (req, 
     if (!dbReady) return res.status(503).json({ ok: false, error: "db not ready" });
     if (!OPENAI_API_KEY) return res.status(503).json({ ok: false, error: "OpenAI API key not configured" });
 
-    const { symptomKeywords, language, brokenJapanese } = req.body || {};
+    const { gender, symptomKeywords, language, brokenJapanese } = req.body || {};
 
     if (!symptomKeywords || !symptomKeywords.trim()) {
       return res.status(400).json({ ok: false, error: "symptomKeywords is required" });
+    }
+    if (!gender) {
+      return res.status(400).json({ ok: false, error: "gender is required" });
     }
     if (!language) {
       return res.status(400).json({ ok: false, error: "language is required" });
     }
 
-    console.log(`[admin/patients/generate] Admin generating patient with keywords: ${symptomKeywords}, language: ${language}, brokenJapanese: ${brokenJapanese}`);
+    console.log(`[admin/patients/generate] Admin generating patient with gender: ${gender}, keywords: ${symptomKeywords}, language: ${language}, brokenJapanese: ${brokenJapanese}`);
 
     // OpenAI GPT-4oで患者プロフィール生成
     const languageNames = {
