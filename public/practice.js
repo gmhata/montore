@@ -1784,13 +1784,14 @@ async function startTalk(cfg){
       // 初期設定（音声/指示/VAD）
       // Note: input_audio_transcription disabled due to repeated failures
       // Subtitles will show only for patient (AI) responses using conversation items
+      // Version 4.17: turn_detectionをver3の設定に戻す（server_vad有効）
       try{ dc.send(JSON.stringify({
         type:"session.update",
         session:{
           voice: voiceName,
           modalities:["text","audio"],
           instructions: instr,
-          turn_detection: null  // 患者が先に話し始めないよう無効化
+          turn_detection:{ type:"server_vad", silence_duration_ms:700, prefix_padding_ms:200 }
         }
       })); }catch{}
 
@@ -1803,7 +1804,7 @@ async function startTalk(cfg){
               session:{
                 voice: voiceName,
                 instructions: instr,  // 言語設定を強制的に維持
-                turn_detection: null  // turn_detection無効化を維持
+                turn_detection:{ type:"server_vad", silence_duration_ms:700, prefix_padding_ms:200 }
               }
             }));
           }
@@ -1834,35 +1835,6 @@ async function startTalk(cfg){
         case "input_audio_buffer.speech_started":
           setPill("看護師: 入力中…");
           setSubtitle("(音声入力中...)", "nurse");
-          // Version 4.15: 割り込み機能 - 看護師が話し始めたら患者の発話を止める
-          if (patientSpeaking) {
-            console.log('[Interrupt] Nurse started speaking, canceling patient response');
-            try {
-              if (dc && dc.readyState === "open") {
-                // 現在の応答をキャンセル
-                dc.send(JSON.stringify({ type: "response.cancel" }));
-                console.log('[Interrupt] Sent response.cancel');
-              }
-            } catch(e) {
-              console.error('[Interrupt] Failed to cancel response:', e);
-            }
-            stopSpeaking();
-          }
-          break;
-        
-        case "input_audio_buffer.speech_stopped":
-          // 看護師が話し終わったタイミングで患者の応答を要求（より確実なタイミング）
-          // Version 4.15: 少し長めの遅延を設定して、短い無音で勝手に応答しないようにする
-          setTimeout(() => {
-            try {
-              if (dc && dc.readyState === "open") {
-                dc.send(JSON.stringify({ type: "response.create" }));
-                console.log('[Nurse] Requesting patient response after speech stopped');
-              }
-            } catch(e) {
-              console.error('[Nurse] Failed to request response on speech_stopped:', e);
-            }
-          }, 300);  // Version 4.16: 300msに調整
           break;
 
         case "input_audio_transcription.started":
@@ -1895,19 +1867,7 @@ async function startTalk(cfg){
           nurseBuf="";
           // Update speech visualization after nurse speaks
           visualizeSpeechMetrics();
-          
-          // Version 4.16: 看護師の発話が完了したら患者の応答を要求
-          // speech_stoppedイベントでも要求するが、transcription完了後にも要求
-          setTimeout(() => {
-            try {
-              if (dc && dc.readyState === "open") {
-                dc.send(JSON.stringify({ type: "response.create" }));
-                console.log('[Nurse] Requesting patient response after transcription');
-              }
-            } catch(e) {
-              console.error('[Nurse] Failed to request response:', e);
-            }
-          }, 300);
+          // Version 4.17: server_vad有効のため、手動response.createは不要（ver3と同じ）
           break;
         }
 
