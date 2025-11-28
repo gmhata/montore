@@ -1227,12 +1227,9 @@ function selectPatient(patientId){
       else if (p.language === "th") langLabel = "タイ語（カタコト）";
     }
     
-    // Version 4.19: 学生表示用プロフィールを明示的に表示（デバッグログ追加）
-    console.log('[selectPatient] Patient data:', p);
-    console.log('[selectPatient] displayProfile:', p.displayProfile);
-    console.log('[selectPatient] profile:', p.profile);
-    const displayProfileText = p.displayProfile || p.profile || "";
-    const hasDisplayProfile = displayProfileText && displayProfileText.trim() !== "";
+    // Version 4.21: 学生表示用プロフィールを表示
+    const profileToShow = p.displayProfile || p.profile || "（プロフィール未設定）";
+    console.log('[selectPatient] Patient:', p.name, 'displayProfile:', p.displayProfile, 'profile:', p.profile);
     
     detailEl.innerHTML = `
       <div class="section">
@@ -1245,7 +1242,7 @@ function selectPatient(patientId){
       </div>
       <div class="section">
         <div class="section-title">学生提示用プロフィール</div>
-        <div class="section-content">${hasDisplayProfile ? esc(displayProfileText) : '<span style="color:#999">（未設定 - 管理画面で設定してください）</span>'}</div>
+        <div class="section-content">${esc(profileToShow)}</div>
       </div>
     `;
   }
@@ -2766,17 +2763,35 @@ OUTPUT LANGUAGE ENFORCEMENT:
 ⚠️ Your VERY FIRST WORD must be in ${langName}
 ⚠️ From the VERY START, speak ONLY ${langName}
 
-JAPANESE COMPREHENSION - CRITICAL:
-⚠️ You CANNOT understand Japanese AT ALL
-⚠️ When the nurse speaks Japanese, you must respond in ${langName} saying you don't understand
-⚠️ Example responses when you hear Japanese:
-  - "I don't understand Japanese" (English)
-  - "일본어를 모릅니다" (Korean)
-  - "我不懂日语" (Chinese)
-  - "ฉันไม่เข้าใจภาษาญี่ปุ่น" (Thai)
-⚠️ NEVER answer questions asked in Japanese - always say you don't understand
-⚠️ You are a foreigner who only speaks ${langName}
-⚠️ Pretend Japanese sounds like meaningless noise to you
+JAPANESE COMPREHENSION - ABSOLUTE ZERO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ YOU DO NOT UNDERSTAND ANY JAPANESE - ZERO COMPREHENSION
+⚠️ Japanese language sounds like random noise to you
+⚠️ You have NEVER learned Japanese - not a single word
+⚠️ Even simple words like "痛い", "はい", "いいえ" are meaningless to you
+
+WHEN YOU HEAR JAPANESE (EVERY TIME):
+→ You MUST say "I don't understand" in ${langName}
+→ You MUST ask the nurse to speak ${langName}
+→ You CANNOT answer ANY question asked in Japanese
+→ You CANNOT understand the meaning - it's just sounds
+
+REQUIRED RESPONSES TO JAPANESE:
+${lang === "en" ? `- "I don't understand Japanese. Please speak English."
+- "Sorry, I can't understand. English please?"
+- "What? I don't speak Japanese."` :
+lang === "ko" ? `- "일본어를 모릅니다. 한국어로 말해주세요."
+- "죄송합니다, 이해하지 못합니다. 한국어로요?"
+- "뭐라고요? 일본어 못해요."` :
+lang === "zh" ? `- "我不懂日语。请说中文。"
+- "对不起，我听不懂。请用中文？"
+- "什么？我不会日语。"` :
+`- "I don't understand Japanese. Please speak ${langName}."
+- "Sorry, I can't understand Japanese."`}
+
+⚠️ IMPORTANT: Even if the nurse's Japanese question seems simple, you CANNOT understand it
+⚠️ Do NOT try to guess what they said - just say you don't understand
+⚠️ The ONLY language you know is ${langName}
 `)}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
