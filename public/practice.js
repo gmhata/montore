@@ -1227,6 +1227,10 @@ function selectPatient(patientId){
       else if (p.language === "th") langLabel = "タイ語（カタコト）";
     }
     
+    // Version 4.18: 学生表示用プロフィールを明示的に表示
+    const displayProfileText = p.displayProfile || "";
+    const hasDisplayProfile = displayProfileText && displayProfileText.trim() !== "";
+    
     detailEl.innerHTML = `
       <div class="section">
         <div class="section-title">基本情報</div>
@@ -1237,8 +1241,8 @@ function selectPatient(patientId){
         </div>
       </div>
       <div class="section">
-        <div class="section-title">症状・プロフィール</div>
-        <div class="section-content">${esc(p.displayProfile || p.profile || "（情報なし）")}</div>
+        <div class="section-title">学生提示用プロフィール</div>
+        <div class="section-content">${hasDisplayProfile ? esc(displayProfileText) : '<span style="color:#999">（未設定 - 管理画面で設定してください）</span>'}</div>
       </div>
     `;
   }
@@ -1360,8 +1364,8 @@ async function downloadPatientPdf(){
     </div>
   </div>
   <div class="section">
-    <div class="section-title">症状・プロフィール</div>
-    <div class="section-content">${p.displayProfile || p.profile || "（情報なし）"}</div>
+    <div class="section-title">学生提示用プロフィール</div>
+    <div class="section-content">${p.displayProfile || "（未設定）"}</div>
   </div>
   <script>
     window.onload = function() {
@@ -1695,18 +1699,8 @@ async function startTalk(cfg){
               console.log('[Modal] Exam keywords detected:', examItems, 'in:', transcript);
               showExamModal(examItems);
             }
-            
-            // Web Speech使用時も患者の応答を要求
-            setTimeout(() => {
-              try {
-                if (dc && dc.readyState === "open") {
-                  dc.send(JSON.stringify({ type: "response.create" }));
-                  console.log('[Nurse] Requesting patient response after Web Speech (final)');
-                }
-              } catch(e) {
-                console.error('[Nurse] Failed to request response:', e);
-              }
-            }, 300);
+            // Version 4.18: server_vad有効時は手動response.createは不要（ver3と同じ）
+            // AIが自動的に発言終了を検出して応答する
           } else {
             interim = transcript;
             setSubtitle(interim + '...', "nurse");
