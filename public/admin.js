@@ -3075,8 +3075,13 @@ function showPatientDetailModal(patientId, patientsList) {
     </div>
 
     <div style="margin-bottom:16px">
-      <div style="font-size:12px; color:#6b7280; margin-bottom:4px">プロフィール</div>
-      <div style="padding:12px; background:#f9fafb; border-radius:6px; border:1px solid #e5e7eb; white-space:pre-wrap">${esc(patient.profile || "-")}</div>
+      <div style="font-size:12px; color:#6b7280; margin-bottom:4px">📋 学生提示用プロフィール</div>
+      <div style="padding:12px; background:#e8f5e9; border-radius:6px; border:1px solid #c8e6c9; white-space:pre-wrap">${patient.displayProfile && patient.displayProfile.trim() !== "" ? esc(patient.displayProfile) : '<span style="color:#e74c3c">⚠️ 未設定 - 編集ボタンから設定してください</span>'}</div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px; color:#6b7280; margin-bottom:4px">🤖 AI用プロフィール（詳細）</div>
+      <div style="padding:12px; background:#f9fafb; border-radius:6px; border:1px solid #e5e7eb; white-space:pre-wrap; font-size:13px">${esc(patient.profile || "-")}</div>
     </div>
 
     <div style="margin-bottom:16px">
