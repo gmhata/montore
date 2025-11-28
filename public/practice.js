@@ -1834,10 +1834,25 @@ async function startTalk(cfg){
         case "input_audio_buffer.speech_started":
           setPill("看護師: 入力中…");
           setSubtitle("(音声入力中...)", "nurse");
+          // Version 4.15: 割り込み機能 - 看護師が話し始めたら患者の発話を止める
+          if (patientSpeaking) {
+            console.log('[Interrupt] Nurse started speaking, canceling patient response');
+            try {
+              if (dc && dc.readyState === "open") {
+                // 現在の応答をキャンセル
+                dc.send(JSON.stringify({ type: "response.cancel" }));
+                console.log('[Interrupt] Sent response.cancel');
+              }
+            } catch(e) {
+              console.error('[Interrupt] Failed to cancel response:', e);
+            }
+            stopSpeaking();
+          }
           break;
         
         case "input_audio_buffer.speech_stopped":
           // 看護師が話し終わったタイミングで患者の応答を要求（より確実なタイミング）
+          // Version 4.15: 少し長めの遅延を設定して、短い無音で勝手に応答しないようにする
           setTimeout(() => {
             try {
               if (dc && dc.readyState === "open") {
@@ -1847,7 +1862,7 @@ async function startTalk(cfg){
             } catch(e) {
               console.error('[Nurse] Failed to request response on speech_stopped:', e);
             }
-          }, 200);
+          }, 500);  // 200ms → 500ms に延長
           break;
 
         case "input_audio_transcription.started":
@@ -1881,19 +1896,9 @@ async function startTalk(cfg){
           // Update speech visualization after nurse speaks
           visualizeSpeechMetrics();
           
-          // turn_detection無効のため、看護師が話し終わったら手動で応答を要求
-          // input_audio_buffer.speech_stopped イベントを待ってから応答要求する方が確実
-          // ここでは即座に要求
-          setTimeout(() => {
-            try {
-              if (dc && dc.readyState === "open") {
-                dc.send(JSON.stringify({ type: "response.create" }));
-                console.log('[Nurse] Requesting patient response after nurse speech');
-              }
-            } catch(e) {
-              console.error('[Nurse] Failed to request response:', e);
-            }
-          }, 100); // 100msに短縮
+          // Version 4.15: response.createはspeech_stoppedイベントでのみ呼び出す
+          // 重複呼び出しを防ぐため、ここでは応答要求を削除
+          // これにより、看護師が意図的に話しかけた場合のみ応答する
           break;
         }
 
@@ -1918,7 +1923,17 @@ async function startTalk(cfg){
           break;
         }
         case "response.audio_transcript.delta":
-          if (ev.delta) patientBuf += ev.delta;
+          if (ev.delta) {
+            patientBuf += ev.delta;
+            // Version 4.15: リアルタイムテキスト表示
+            if (window.__showConversationText) {
+              const conversationTextDisplay = $("conversationTextDisplay");
+              if (conversationTextDisplay) {
+                conversationTextDisplay.textContent = "[患者] " + patientBuf;
+              }
+            }
+            setSubtitle(patientBuf, "patient");
+          }
           break;
         case "response.audio_transcript.done": {
           const t=(ev.text||ev.transcript||patientBuf||"").trim();
@@ -2689,6 +2704,13 @@ VITAL SIGNS AND PHYSICAL EXAMINATION - CRITICAL RULES:
 ⚠️ NEVER state specific numbers for temperature, blood pressure, pulse, etc.
 - Patients cannot know their exact vital signs without measurement
 - Only medical equipment can provide these numbers
+
+⚠️ BASIC IDENTIFICATION - ALWAYS ANSWER:
+When the nurse asks about your basic information, ALWAYS answer:
+✓ Name: Answer with your name when asked "お名前は？" or "What is your name?"
+✓ Age: Answer with your age when asked "何歳ですか？" or "How old are you?"
+✓ Date of birth: Answer if asked "生年月日は？" or "What is your date of birth?"
+✓ These are basic patient identification questions - always respond clearly
 
 ⚠️ COOPERATION WITH MEASUREMENTS - IMPORTANT:
 When the nurse requests to measure vital signs or perform physical examinations:
