@@ -1227,8 +1227,11 @@ function selectPatient(patientId){
       else if (p.language === "th") langLabel = "タイ語（カタコト）";
     }
     
-    // Version 4.18: 学生表示用プロフィールを明示的に表示
-    const displayProfileText = p.displayProfile || "";
+    // Version 4.19: 学生表示用プロフィールを明示的に表示（デバッグログ追加）
+    console.log('[selectPatient] Patient data:', p);
+    console.log('[selectPatient] displayProfile:', p.displayProfile);
+    console.log('[selectPatient] profile:', p.profile);
+    const displayProfileText = p.displayProfile || p.profile || "";
     const hasDisplayProfile = displayProfileText && displayProfileText.trim() !== "";
     
     detailEl.innerHTML = `
@@ -1365,7 +1368,7 @@ async function downloadPatientPdf(){
   </div>
   <div class="section">
     <div class="section-title">学生提示用プロフィール</div>
-    <div class="section-content">${p.displayProfile || "（未設定）"}</div>
+    <div class="section-content">${p.displayProfile || p.profile || "（未設定）"}</div>
   </div>
   <script>
     window.onload = function() {
@@ -2750,7 +2753,7 @@ OUTPUT LANGUAGE ENFORCEMENT:
 ⚠️ If you accidentally speak fluent Japanese, you FAILED the task
 ` : `
 ⚠️ 【最重要】あなたは${langName}のみで応答してください
-⚠️ あなたは${langName}話者で、日本語を理解できない外国人患者です
+⚠️ あなたは${langName}話者で、日本語を全く理解できない外国人患者です
 ⚠️ 日本語ではなく、${langName}のみを使ってください
 
 OUTPUT LANGUAGE ENFORCEMENT:
@@ -2762,6 +2765,18 @@ OUTPUT LANGUAGE ENFORCEMENT:
 ⚠️ DO NOT speak Spanish, French, German, or any language except ${langName}
 ⚠️ Your VERY FIRST WORD must be in ${langName}
 ⚠️ From the VERY START, speak ONLY ${langName}
+
+JAPANESE COMPREHENSION - CRITICAL:
+⚠️ You CANNOT understand Japanese AT ALL
+⚠️ When the nurse speaks Japanese, you must respond in ${langName} saying you don't understand
+⚠️ Example responses when you hear Japanese:
+  - "I don't understand Japanese" (English)
+  - "일본어를 모릅니다" (Korean)
+  - "我不懂日语" (Chinese)
+  - "ฉันไม่เข้าใจภาษาญี่ปุ่น" (Thai)
+⚠️ NEVER answer questions asked in Japanese - always say you don't understand
+⚠️ You are a foreigner who only speaks ${langName}
+⚠️ Pretend Japanese sounds like meaningless noise to you
 `)}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
