@@ -1862,7 +1862,7 @@ async function startTalk(cfg){
             } catch(e) {
               console.error('[Nurse] Failed to request response on speech_stopped:', e);
             }
-          }, 500);  // 200ms → 500ms に延長
+          }, 300);  // Version 4.16: 300msに調整
           break;
 
         case "input_audio_transcription.started":
@@ -1896,9 +1896,18 @@ async function startTalk(cfg){
           // Update speech visualization after nurse speaks
           visualizeSpeechMetrics();
           
-          // Version 4.15: response.createはspeech_stoppedイベントでのみ呼び出す
-          // 重複呼び出しを防ぐため、ここでは応答要求を削除
-          // これにより、看護師が意図的に話しかけた場合のみ応答する
+          // Version 4.16: 看護師の発話が完了したら患者の応答を要求
+          // speech_stoppedイベントでも要求するが、transcription完了後にも要求
+          setTimeout(() => {
+            try {
+              if (dc && dc.readyState === "open") {
+                dc.send(JSON.stringify({ type: "response.create" }));
+                console.log('[Nurse] Requesting patient response after transcription');
+              }
+            } catch(e) {
+              console.error('[Nurse] Failed to request response:', e);
+            }
+          }, 300);
           break;
         }
 
