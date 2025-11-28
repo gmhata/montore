@@ -1227,9 +1227,9 @@ function selectPatient(patientId){
       else if (p.language === "th") langLabel = "タイ語（カタコト）";
     }
     
-    // Version 4.21: 学生表示用プロフィールを表示
-    const profileToShow = p.displayProfile || p.profile || "（プロフィール未設定）";
-    console.log('[selectPatient] Patient:', p.name, 'displayProfile:', p.displayProfile, 'profile:', p.profile);
+    // Version 4.22: 学生表示用プロフィールのみ表示（AI用にフォールバックしない）
+    const hasDisplayProfile = p.displayProfile && p.displayProfile.trim() !== "";
+    console.log('[selectPatient] Patient:', p.name, 'displayProfile:', p.displayProfile, 'hasDisplayProfile:', hasDisplayProfile);
     
     detailEl.innerHTML = `
       <div class="section">
@@ -1242,7 +1242,7 @@ function selectPatient(patientId){
       </div>
       <div class="section">
         <div class="section-title">学生提示用プロフィール</div>
-        <div class="section-content">${esc(profileToShow)}</div>
+        <div class="section-content">${hasDisplayProfile ? esc(p.displayProfile) : '<span style="color:#e74c3c; font-weight:500">⚠️ 未設定です。管理画面の「患者管理」から該当患者を編集し、「表示用患者プロフィール（学生向け）」を設定してください。</span>'}</div>
       </div>
     `;
   }
@@ -1365,7 +1365,7 @@ async function downloadPatientPdf(){
   </div>
   <div class="section">
     <div class="section-title">学生提示用プロフィール</div>
-    <div class="section-content">${p.displayProfile || p.profile || "（未設定）"}</div>
+    <div class="section-content">${p.displayProfile && p.displayProfile.trim() !== "" ? p.displayProfile : "⚠️ 未設定 - 管理画面で設定してください"}</div>
   </div>
   <script>
     window.onload = function() {
@@ -2749,49 +2749,40 @@ OUTPUT LANGUAGE ENFORCEMENT:
 ⚠️ NEVER EVER speak complete, grammatically correct Japanese sentences
 ⚠️ If you accidentally speak fluent Japanese, you FAILED the task
 ` : `
-⚠️ 【最重要】あなたは${langName}のみで応答してください
-⚠️ あなたは${langName}話者で、日本語を全く理解できない外国人患者です
-⚠️ 日本語ではなく、${langName}のみを使ってください
-
-OUTPUT LANGUAGE ENFORCEMENT:
-⚠️ CRITICAL: You MUST respond ONLY in ${langName} (${langCode})
-⚠️ NEVER EVER switch to Japanese or any other language
-⚠️ If you speak in any language other than ${langName}, you will FAIL
-⚠️ Every single word must be in ${langName}
-⚠️ You DO NOT understand Japanese - you can ONLY speak ${langName}
-⚠️ DO NOT speak Spanish, French, German, or any language except ${langName}
-⚠️ Your VERY FIRST WORD must be in ${langName}
-⚠️ From the VERY START, speak ONLY ${langName}
-
-JAPANESE COMPREHENSION - ABSOLUTE ZERO:
+🚨 CRITICAL LANGUAGE RULE - YOU ONLY SPEAK ${langName.toUpperCase()} 🚨
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ YOU DO NOT UNDERSTAND ANY JAPANESE - ZERO COMPREHENSION
-⚠️ Japanese language sounds like random noise to you
-⚠️ You have NEVER learned Japanese - not a single word
-⚠️ Even simple words like "痛い", "はい", "いいえ" are meaningless to you
 
-WHEN YOU HEAR JAPANESE (EVERY TIME):
-→ You MUST say "I don't understand" in ${langName}
-→ You MUST ask the nurse to speak ${langName}
-→ You CANNOT answer ANY question asked in Japanese
-→ You CANNOT understand the meaning - it's just sounds
+YOU ARE A ${langName.toUpperCase()}-ONLY SPEAKER FROM ABROAD.
+You came to Japan for travel/work but you DO NOT speak Japanese.
 
-REQUIRED RESPONSES TO JAPANESE:
-${lang === "en" ? `- "I don't understand Japanese. Please speak English."
-- "Sorry, I can't understand. English please?"
-- "What? I don't speak Japanese."` :
-lang === "ko" ? `- "일본어를 모릅니다. 한국어로 말해주세요."
-- "죄송합니다, 이해하지 못합니다. 한국어로요?"
-- "뭐라고요? 일본어 못해요."` :
-lang === "zh" ? `- "我不懂日语。请说中文。"
-- "对不起，我听不懂。请用中文？"
-- "什么？我不会日语。"` :
-`- "I don't understand Japanese. Please speak ${langName}."
-- "Sorry, I can't understand Japanese."`}
+⚠️ YOU CANNOT UNDERSTAND JAPANESE AT ALL:
+- Japanese sounds like meaningless noise to you
+- You have NEVER studied Japanese
+- You cannot read, write, speak, or understand ANY Japanese
+- Words like "痛い", "はい", "いいえ", "お名前" mean NOTHING to you
 
-⚠️ IMPORTANT: Even if the nurse's Japanese question seems simple, you CANNOT understand it
-⚠️ Do NOT try to guess what they said - just say you don't understand
-⚠️ The ONLY language you know is ${langName}
+⚠️ WHEN THE NURSE SPEAKS JAPANESE:
+- You look confused
+- You shake your head
+- You say in ${langName}: "${lang === "en" ? "I don't understand. Do you speak English?" : lang === "ko" ? "이해 못해요. 한국어 할 수 있어요?" : lang === "zh" ? "我听不懂。你会说中文吗？" : "I don't understand. Do you speak " + langName + "?"}"
+- You NEVER answer the question because you don't know what was asked
+
+⚠️ YOU MUST ONLY SPEAK ${langName.toUpperCase()}:
+- Every single word must be in ${langName}
+- If you accidentally use Japanese, you FAIL
+- Your FIRST word must be in ${langName}
+
+⚠️ HOW TO RESPOND TO JAPANESE INPUT:
+1. Look confused (you heard sounds but don't know the meaning)
+2. Say "${lang === "en" ? "Sorry, I don't speak Japanese." : lang === "ko" ? "죄송해요, 일본어 못해요." : lang === "zh" ? "对不起，我不会日语。" : "Sorry, I don't speak Japanese."}"
+3. Ask "${lang === "en" ? "English please?" : lang === "ko" ? "한국어로요?" : lang === "zh" ? "中文可以吗？" : langName + " please?"}"
+4. NEVER answer the content of the Japanese question
+
+⚠️ REMEMBER:
+- You are sick and in pain (describe symptoms in ${langName} when asked in ${langName})
+- But you CANNOT communicate in Japanese
+- If nurse speaks Japanese → you don't understand → ask for ${langName}
+- If nurse speaks ${langName} → you answer about your symptoms in ${langName}
 `)}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
