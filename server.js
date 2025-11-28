@@ -406,7 +406,9 @@ app.post("/api/sessions/start", requireAuth, async (req, res) => {
     });
     
     // 患者の使用回数を増やす
-    const patientId = cfg.patientId;
+    // Version 4.13: cfg.patient.idとcfg.patientIdの両方をサポート
+    const patientId = cfg.patientId || (cfg.patient && cfg.patient.id) || null;
+    console.log(`[sessions/start] patientId check: cfg.patientId=${cfg.patientId}, cfg.patient.id=${cfg.patient?.id}, resolved=${patientId}`);
     if (patientId) {
       try {
         const patientRef = db.collection("test_patients").doc(patientId);
