@@ -592,14 +592,16 @@ summary（総評）の作成ルール（厳守）:
 - 新しい事実の創作は禁止。必要に応じて看護師/患者の発言を短く「」で引用してよい。
 - 批判は簡潔にし、最後は次回に向けた励ましの1文で締める。
 
-positives（良かった点）の作成ルール:
-- 3〜5件。各要素は文頭を動詞で始める短い指示文にする（例:「氏名・年齢を確認した」「患者の訴えに共感を示した」など）。
+positives（良かった点）の作成ルール【必須で3件以上出力すること】:
+- 必ず3〜5件出力する（0件は禁止）。各要素は文頭を動詞で始める短い指示文にする。
 - 1要素は45文字以内。具体的な観察や手技名を含める。
 - 【重要】良かった点は、評価対象・対象外に関わらず、会話全体から良い点を見つけて全て褒めてください。
+- 例:「氏名と年齢を確認した」「患者の訴えを傾聴した」「丁寧な言葉遣いで対応した」「症状の程度を確認した」
 
-improvements（改善が必要な点）の作成ルール:
-- 3〜5件。各要素は文頭を動詞で始める短い指示文にする（例:「OPQRSTの"時間経過"を必ず尋ねる」など）。
+improvements（改善が必要な点）の作成ルール【必須で3件以上出力すること】:
+- 必ず3〜5件出力する（0件は禁止）。各要素は文頭を動詞で始める短い指示文にする。
 - 1要素は45文字以内。具体的な観察や手技名を含める。
+- 例:「OPQRSTの時間経過を尋ねる」「Red Flagを確認する」「既往歴を聴取する」
 ${improvementsExtraRule}
 
 出力 JSON 形式:
@@ -653,8 +655,12 @@ ${improvementsExtraRule}
         };
       }),
       summary: String(j?.report?.summary || ""),
-      positives: Array.isArray(j?.report?.positives) ? j.report.positives.map(String) : [],
-      improvements: Array.isArray(j?.report?.improvements) ? j.report.improvements.map(String) : [],
+      positives: Array.isArray(j?.report?.positives) && j.report.positives.length > 0 
+        ? j.report.positives.map(String).filter(s => s.trim()) 
+        : ["対話を開始した", "患者に声をかけた", "会話を試みた"],  // フォールバック
+      improvements: Array.isArray(j?.report?.improvements) && j.report.improvements.length > 0 
+        ? j.report.improvements.map(String).filter(s => s.trim()) 
+        : ["より詳しく症状を聴取する", "患者の名前を確認する", "開放質問を使用する"],  // フォールバック
       durationSec,
       selectedEvalItems: selectedEvalItems || null,  // Version 4.25: 選択項目を保存
     };
