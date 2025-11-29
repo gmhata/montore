@@ -3055,11 +3055,9 @@ app.get("/api/admin/users/:uid/sessions", requireAuth, requireAdmin, async (req,
     
     console.log(`[GET /api/admin/users/${uid}/sessions] Fetching sessions for user ${uid}`);
     
-    // ユーザーのセッションを取得（新しい順）
+    // ユーザーのセッションを取得（インデックス不要なクエリ）
     const sessionsSnapshot = await db.collection("sessions")
       .where("uid", "==", uid)
-      .orderBy("createdAt", "desc")
-      .limit(100)
       .get();
     
     const sessions = [];
@@ -3099,8 +3097,14 @@ app.get("/api/admin/users/:uid/sessions", requireAuth, requireAdmin, async (req,
       });
     }
     
-    console.log(`[GET /api/admin/users/${uid}/sessions] Found ${sessions.length} sessions`);
-    res.json({ ok: true, sessions });
+    // 新しい順にソート
+    sessions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    
+    // 最大100件に制限
+    const limitedSessions = sessions.slice(0, 100);
+    
+    console.log(`[GET /api/admin/users/${uid}/sessions] Found ${limitedSessions.length} sessions`);
+    res.json({ ok: true, sessions: limitedSessions });
     
   } catch (e) {
     console.error(`[GET /api/admin/users/:uid/sessions] Error:`, e);

@@ -3486,64 +3486,47 @@ async function mountUserResultsPane() {
 
   pane.innerHTML = `
     <h3>ユーザー別評価結果</h3>
-    <div class="muted small" style="margin-bottom:12px">学生の評価結果を確認できます。ユーザーを選択してセッションを表示します。</div>
+    <div class="muted small" style="margin-bottom:12px">学生の評価結果を確認できます。ユーザーを選択→セッションを選択してください。</div>
     
-    <!-- ユーザー選択 -->
-    <div style="margin-bottom:16px">
-      <label style="font-weight:600; margin-bottom:8px; display:block">ユーザー選択</label>
-      <select id="urUserSelect" style="width:100%; max-width:400px; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px">
-        <option value="">-- ユーザーを選択 --</option>
-      </select>
-    </div>
-    
-    <!-- セッション一覧と評価結果（横並び） -->
-    <div id="urContent" style="display:none">
-      <div style="display:grid; grid-template-columns:320px 1fr; gap:16px; min-height:500px">
-        <!-- 左側：セッション一覧 -->
-        <div style="background:#f9fafb; border-radius:8px; padding:12px; overflow-y:auto; max-height:600px">
-          <div style="font-weight:600; margin-bottom:8px; color:#374151">実施履歴</div>
-          <div id="urSessionList">
-            <div class="muted small">セッションを読み込み中...</div>
-          </div>
+    <!-- 3カラムレイアウト: ユーザー一覧 | セッション一覧 | 評価結果 -->
+    <div style="display:grid; grid-template-columns:200px 280px 1fr; gap:12px; min-height:550px">
+      
+      <!-- 左側：ユーザー一覧 -->
+      <div style="background:#f9fafb; border-radius:8px; padding:12px; overflow-y:auto; max-height:600px">
+        <div style="font-weight:600; margin-bottom:8px; color:#374151; font-size:13px">ユーザー一覧</div>
+        <div id="urUserList">
+          <div class="muted small">読み込み中...</div>
         </div>
-        
-        <!-- 右側：評価結果 -->
-        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px; overflow-y:auto; max-height:600px">
-          <div id="urResultContent">
-            <div class="muted" style="text-align:center; padding:40px">
-              <div style="font-size:48px; margin-bottom:12px">📋</div>
-              <div>左のリストからセッションを選択してください</div>
-            </div>
+      </div>
+      
+      <!-- 中央：セッション一覧 -->
+      <div style="background:#f9fafb; border-radius:8px; padding:12px; overflow-y:auto; max-height:600px">
+        <div style="font-weight:600; margin-bottom:8px; color:#374151; font-size:13px">実施履歴</div>
+        <div id="urSessionList">
+          <div class="muted small" style="padding:20px; text-align:center">ユーザーを選択してください</div>
+        </div>
+      </div>
+      
+      <!-- 右側：評価結果 -->
+      <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px; overflow-y:auto; max-height:600px">
+        <div id="urResultContent">
+          <div class="muted" style="text-align:center; padding:40px">
+            <div style="font-size:48px; margin-bottom:12px">📋</div>
+            <div>セッションを選択してください</div>
           </div>
         </div>
       </div>
-    </div>
-    
-    <div id="urLoading" class="muted" style="text-align:center; padding:40px; display:none">
-      読み込み中...
     </div>
   `;
 
   // ユーザー一覧を取得
   await loadUserResultsUsers();
-
-  // ユーザー選択イベント
-  const userSelect = $("urUserSelect");
-  if (userSelect) {
-    userSelect.addEventListener("change", async (e) => {
-      const userId = e.target.value;
-      if (userId) {
-        userResultsState.selectedUserId = userId;
-        await loadUserSessions(userId);
-      } else {
-        userResultsState.selectedUserId = null;
-        $("urContent").style.display = "none";
-      }
-    });
-  }
 }
 
 async function loadUserResultsUsers() {
+  const userList = $("urUserList");
+  if (!userList) return;
+
   try {
     const token = await getIdToken();
     if (!token) return;
@@ -3555,30 +3538,71 @@ async function loadUserResultsUsers() {
     if (!resp.ok) throw new Error(data.error || "取得失敗");
 
     userResultsState.users = data.users || [];
+    console.log("[loadUserResultsUsers] Fetched users:", userResultsState.users.length);
 
-    const select = $("urUserSelect");
-    if (select) {
-      select.innerHTML = '<option value="">-- ユーザーを選択 --</option>';
-      for (const user of userResultsState.users) {
-        const opt = document.createElement("option");
-        opt.value = user.uid;
-        opt.textContent = `${user.displayName || user.email || "名前なし"} (${user.email || "メールなし"})`;
-        select.appendChild(opt);
-      }
+    if (userResultsState.users.length === 0) {
+      userList.innerHTML = '<div class="muted small" style="padding:20px; text-align:center">ユーザーがいません</div>';
+      return;
     }
+
+    userList.innerHTML = userResultsState.users.map(user => {
+      const name = user.name || user.displayName || "名前未設定";
+      const email = user.email || "";
+      return `
+        <div class="ur-user-item" data-uid="${esc(user.uid)}" style="
+          padding:10px;
+          margin-bottom:6px;
+          background:white;
+          border:1px solid #e5e7eb;
+          border-radius:6px;
+          cursor:pointer;
+          transition: all 0.15s ease;
+        ">
+          <div style="font-weight:600; font-size:13px; color:#374151">${esc(name)}</div>
+          <div style="font-size:11px; color:#6b7280; margin-top:2px; word-break:break-all">${esc(email)}</div>
+        </div>
+      `;
+    }).join("");
+
+    // ユーザークリックイベント
+    userList.querySelectorAll(".ur-user-item").forEach(item => {
+      item.addEventListener("click", async () => {
+        const uid = item.getAttribute("data-uid");
+        
+        // 選択状態を更新
+        userList.querySelectorAll(".ur-user-item").forEach(el => {
+          el.style.borderColor = "#e5e7eb";
+          el.style.background = "white";
+        });
+        item.style.borderColor = "#ec4899";
+        item.style.background = "#fdf2f8";
+        
+        userResultsState.selectedUserId = uid;
+        await loadUserSessions(uid);
+      });
+    });
+
   } catch (e) {
     console.error("[loadUserResultsUsers] Error:", e);
+    userList.innerHTML = `<div class="err small">エラー: ${esc(e.message)}</div>`;
   }
 }
 
 async function loadUserSessions(userId) {
-  const content = $("urContent");
-  const loading = $("urLoading");
   const sessionList = $("urSessionList");
   const resultContent = $("urResultContent");
 
-  if (loading) loading.style.display = "block";
-  if (content) content.style.display = "none";
+  if (sessionList) {
+    sessionList.innerHTML = '<div class="muted small" style="padding:20px; text-align:center">読み込み中...</div>';
+  }
+  if (resultContent) {
+    resultContent.innerHTML = `
+      <div class="muted" style="text-align:center; padding:40px">
+        <div style="font-size:48px; margin-bottom:12px">📋</div>
+        <div>セッションを選択してください</div>
+      </div>
+    `;
+  }
 
   try {
     const token = await getIdToken();
@@ -3591,9 +3615,7 @@ async function loadUserSessions(userId) {
     if (!resp.ok) throw new Error(data.error || "取得失敗");
 
     userResultsState.sessions = data.sessions || [];
-
-    if (loading) loading.style.display = "none";
-    if (content) content.style.display = "block";
+    console.log("[loadUserSessions] Fetched sessions:", userResultsState.sessions.length);
 
     // セッション一覧を描画
     if (sessionList) {
@@ -3606,17 +3628,17 @@ async function loadUserSessions(userId) {
           const score = s.score100 != null ? `${s.score100}点` : "未評価";
           return `
             <div class="ur-session-item" data-session-id="${esc(s.id)}" style="
-              padding:12px; 
-              margin-bottom:8px; 
+              padding:10px; 
+              margin-bottom:6px; 
               background:white; 
               border:1px solid #e5e7eb; 
               border-radius:6px; 
               cursor:pointer;
               transition: all 0.15s ease;
-            " onmouseover="this.style.borderColor='#ec4899'" onmouseout="this.style.borderColor='#e5e7eb'">
-              <div style="font-weight:600; font-size:13px; color:#374151">${esc(patientName)}</div>
-              <div style="font-size:12px; color:#6b7280; margin-top:4px">${date}</div>
-              <div style="font-size:12px; color:#ec4899; font-weight:600; margin-top:4px">${score}</div>
+            ">
+              <div style="font-weight:600; font-size:12px; color:#374151">${esc(patientName)}</div>
+              <div style="font-size:11px; color:#6b7280; margin-top:2px">${date}</div>
+              <div style="font-size:11px; color:#ec4899; font-weight:600; margin-top:2px">${score}</div>
             </div>
           `;
         }).join("");
@@ -3639,21 +3661,10 @@ async function loadUserSessions(userId) {
       }
     }
 
-    // 結果エリアをリセット
-    if (resultContent) {
-      resultContent.innerHTML = `
-        <div class="muted" style="text-align:center; padding:40px">
-          <div style="font-size:48px; margin-bottom:12px">📋</div>
-          <div>左のリストからセッションを選択してください</div>
-        </div>
-      `;
-    }
-
   } catch (e) {
     console.error("[loadUserSessions] Error:", e);
-    if (loading) loading.style.display = "none";
     if (sessionList) {
-      sessionList.innerHTML = `<div class="err">エラー: ${esc(e.message)}</div>`;
+      sessionList.innerHTML = `<div class="err small" style="padding:10px">エラー: ${esc(e.message)}</div>`;
     }
   }
 }
