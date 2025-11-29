@@ -1245,13 +1245,13 @@ function selectPatient(patientId){
     const hasDisplayProfile = p.displayProfile && p.displayProfile.trim() !== "";
     console.log('[selectPatient] Patient:', p.name, 'displayProfile:', p.displayProfile, 'hasDisplayProfile:', hasDisplayProfile);
     
-    // Version 4.25: 評価項目チェックボックスを生成（コンパクト表示）
+    // Version 4.27: 評価項目チェックボックスを生成（括弧書き説明付き、コンパクト）
     const evalCheckboxesHtml = EVALUATION_ITEMS.map(item => `
-      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:1px 0;font-size:13px">
+      <label style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:12px;white-space:nowrap">
         <input type="checkbox" class="eval-item-checkbox" data-item-id="${item.id}" 
                ${selectedEvalItems.has(item.id) ? 'checked' : ''}
-               style="width:14px;height:14px;cursor:pointer">
-        <span style="font-weight:500">${item.name}</span>
+               style="width:13px;height:13px;cursor:pointer;margin:0">
+        <span>${item.name}</span><span style="color:#6b7280;font-size:11px">(${item.description})</span>
       </label>
     `).join('');
     
@@ -1268,22 +1268,17 @@ function selectPatient(patientId){
         <div class="section-title">学生提示用プロフィール</div>
         <div class="section-content">${hasDisplayProfile ? esc(p.displayProfile) : '<span style="color:#e74c3c; font-weight:500">⚠️ 未設定です。管理画面の「患者管理」から該当患者を編集し、「表示用患者プロフィール（学生向け）」を設定してください。</span>'}</div>
       </div>
-      <div class="section">
-        <div class="section-title">📋 評価項目の選択</div>
-        <div class="section-content" style="background:#f0fdf4;border:1px solid #86efac;padding:8px 12px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-            <span style="font-size:12px;color:#166534">対話後に評価する項目を選択</span>
-            <div style="display:flex;gap:6px">
-              <button type="button" id="btnSelectAllEval" class="secondary" style="font-size:11px;padding:2px 8px">全選択</button>
-              <button type="button" id="btnDeselectAllEval" class="secondary" style="font-size:11px;padding:2px 8px">全解除</button>
-            </div>
+      <div style="margin-top:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:6px 10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;font-weight:600;color:#166534">📋 評価項目の選択</span>
+          <div style="display:flex;gap:4px;align-items:center">
+            <span style="font-size:11px;color:#374151">選択:<strong id="selectedEvalCount">${selectedEvalItems.size}</strong>項目(満点:<strong id="maxScore">${selectedEvalItems.size * 2}</strong>点)</span>
+            <button type="button" id="btnSelectAllEval" class="secondary" style="font-size:10px;padding:1px 6px">全選択</button>
+            <button type="button" id="btnDeselectAllEval" class="secondary" style="font-size:10px;padding:1px 6px">全解除</button>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:2px">
-            ${evalCheckboxesHtml}
-          </div>
-          <div style="margin-top:6px;font-size:11px;color:#374151;text-align:right">
-            選択: <strong id="selectedEvalCount">${selectedEvalItems.size}</strong>項目（満点: <strong id="maxScore">${selectedEvalItems.size * 2}</strong>点）
-          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px 8px">
+          ${evalCheckboxesHtml}
         </div>
       </div>
     `;
