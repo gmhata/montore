@@ -1664,16 +1664,22 @@ app.post("/api/student/ai-analysis", requireAuth, async (req, res) => {
     }
 
     // 自分のセッションデータのみ取得（個人情報保護）
+    // v4.37: インデックス不要なクエリに変更（whereのみ）+ サーバーサイドソート
     const sessionsQ = await db.collection("sessions")
       .where("uid", "==", uid)
-      .orderBy("createdAt", "desc")
-      .limit(50)
       .get();
+
+    // メモリ上でソート（createdAt降順）し、最新50件に制限
+    const sortedDocs = sessionsQ.docs
+      .map(doc => ({ doc, createdAt: doc.data().createdAt || 0 }))
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 50)
+      .map(x => x.doc);
 
     const sessions = [];
     const debugInfo = { totalFetched: sessionsQ.docs.length, validSessions: 0, scoreMissing: 0 };
 
-    for (const doc of sessionsQ.docs) {
+    for (const doc of sortedDocs) {
       const data = doc.data();
       const msgsQ = await db.collection("sessions").doc(doc.id).collection("messages").get();
       const messages = msgsQ.docs.map(m => m.data());
