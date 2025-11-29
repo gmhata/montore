@@ -3478,7 +3478,7 @@ async function deleteAdminPatient(patientId) {
   }
 }
 
-/* ====================== v4.33: ユーザー別評価結果 ====================== */
+/* ====================== v4.33: ユーザー別学修管理 ====================== */
 let userResultsState = {
   users: [],
   selectedUserId: null,
@@ -3501,16 +3501,20 @@ async function mountUserResultsPane() {
       <button id="urBackBtn" style="padding:8px 16px; background:#f3f4f6; border:1px solid #d1d5db; border-radius:6px; cursor:pointer; font-size:13px">
         ← メニューに戻る
       </button>
-      <h3 style="margin:0">ユーザー別評価結果</h3>
+      <h3 style="margin:0">ユーザー別学修管理</h3>
     </div>
     <div class="muted small" style="margin-bottom:12px">学生の評価結果を確認できます。ユーザーを選択→セッションを選択してください。</div>
     
     <!-- 3カラムレイアウト: ユーザー一覧 | セッション一覧 | 評価結果 -->
-    <div style="display:grid; grid-template-columns:200px 280px 1fr; gap:12px; min-height:600px">
+    <div style="display:grid; grid-template-columns:220px 280px 1fr; gap:12px; min-height:600px">
       
       <!-- 左側：ユーザー一覧 -->
       <div style="background:#f9fafb; border-radius:8px; padding:12px; overflow-y:auto; max-height:700px">
         <div style="font-weight:600; margin-bottom:8px; color:#374151; font-size:13px">ユーザー一覧</div>
+        <!-- v4.36: 検索ボックス -->
+        <input type="text" id="urUserSearch" placeholder="名前・メールで検索..." 
+          style="width:100%; padding:8px 10px; margin-bottom:10px; border:1px solid #d1d5db; border-radius:6px; font-size:12px; box-sizing:border-box">
+        <div id="urUserCount" class="muted small" style="margin-bottom:8px"></div>
         <div id="urUserList">
           <div class="muted small">読み込み中...</div>
         </div>
@@ -3556,6 +3560,8 @@ async function mountUserResultsPane() {
 
 async function loadUserResultsUsers() {
   const userList = $("urUserList");
+  const userCount = $("urUserCount");
+  const searchInput = $("urUserSearch");
   if (!userList) return;
 
   try {
@@ -3571,52 +3577,93 @@ async function loadUserResultsUsers() {
     userResultsState.users = data.users || [];
     console.log("[loadUserResultsUsers] Fetched users:", userResultsState.users.length);
 
-    if (userResultsState.users.length === 0) {
-      userList.innerHTML = '<div class="muted small" style="padding:20px; text-align:center">ユーザーがいません</div>';
-      return;
+    // v4.36: 検索イベントを設定
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        renderUserList(searchInput.value.trim().toLowerCase());
+      });
     }
 
-    userList.innerHTML = userResultsState.users.map(user => {
-      const name = user.name || user.displayName || "名前未設定";
-      const email = user.email || "";
-      return `
-        <div class="ur-user-item" data-uid="${esc(user.uid)}" style="
-          padding:10px;
-          margin-bottom:6px;
-          background:white;
-          border:1px solid #e5e7eb;
-          border-radius:6px;
-          cursor:pointer;
-          transition: all 0.15s ease;
-        ">
-          <div style="font-weight:600; font-size:13px; color:#374151">${esc(name)}</div>
-          <div style="font-size:11px; color:#6b7280; margin-top:2px; word-break:break-all">${esc(email)}</div>
-        </div>
-      `;
-    }).join("");
-
-    // ユーザークリックイベント
-    userList.querySelectorAll(".ur-user-item").forEach(item => {
-      item.addEventListener("click", async () => {
-        const uid = item.getAttribute("data-uid");
-        
-        // 選択状態を更新
-        userList.querySelectorAll(".ur-user-item").forEach(el => {
-          el.style.borderColor = "#e5e7eb";
-          el.style.background = "white";
-        });
-        item.style.borderColor = "#ec4899";
-        item.style.background = "#fdf2f8";
-        
-        userResultsState.selectedUserId = uid;
-        await loadUserSessions(uid);
-      });
-    });
+    // 初期描画
+    renderUserList("");
 
   } catch (e) {
     console.error("[loadUserResultsUsers] Error:", e);
     userList.innerHTML = `<div class="err small">エラー: ${esc(e.message)}</div>`;
   }
+}
+
+// v4.36: ユーザー一覧の描画（検索フィルタ対応）
+function renderUserList(searchQuery) {
+  const userList = $("urUserList");
+  const userCount = $("urUserCount");
+  if (!userList) return;
+
+  // フィルタリング
+  let filteredUsers = userResultsState.users;
+  if (searchQuery) {
+    filteredUsers = userResultsState.users.filter(user => {
+      const name = (user.name || user.displayName || "").toLowerCase();
+      const email = (user.email || "").toLowerCase();
+      return name.includes(searchQuery) || email.includes(searchQuery);
+    });
+  }
+
+  // 件数表示
+  if (userCount) {
+    if (searchQuery) {
+      userCount.textContent = `${filteredUsers.length}件 / ${userResultsState.users.length}件`;
+    } else {
+      userCount.textContent = `全${userResultsState.users.length}件`;
+    }
+  }
+
+  if (filteredUsers.length === 0) {
+    userList.innerHTML = searchQuery 
+      ? '<div class="muted small" style="padding:20px; text-align:center">該当するユーザーがいません</div>'
+      : '<div class="muted small" style="padding:20px; text-align:center">ユーザーがいません</div>';
+    return;
+  }
+
+  userList.innerHTML = filteredUsers.map(user => {
+    const name = user.name || user.displayName || "名前未設定";
+    const email = user.email || "";
+    const isSelected = user.uid === userResultsState.selectedUserId;
+    const borderColor = isSelected ? "#ec4899" : "#e5e7eb";
+    const bgColor = isSelected ? "#fdf2f8" : "white";
+    return `
+      <div class="ur-user-item" data-uid="${esc(user.uid)}" style="
+        padding:10px;
+        margin-bottom:6px;
+        background:${bgColor};
+        border:1px solid ${borderColor};
+        border-radius:6px;
+        cursor:pointer;
+        transition: all 0.15s ease;
+      ">
+        <div style="font-weight:600; font-size:13px; color:#374151">${esc(name)}</div>
+        <div style="font-size:11px; color:#6b7280; margin-top:2px; word-break:break-all">${esc(email)}</div>
+      </div>
+    `;
+  }).join("");
+
+  // ユーザークリックイベント
+  userList.querySelectorAll(".ur-user-item").forEach(item => {
+    item.addEventListener("click", async () => {
+      const uid = item.getAttribute("data-uid");
+      
+      // 選択状態を更新
+      userList.querySelectorAll(".ur-user-item").forEach(el => {
+        el.style.borderColor = "#e5e7eb";
+        el.style.background = "white";
+      });
+      item.style.borderColor = "#ec4899";
+      item.style.background = "#fdf2f8";
+      
+      userResultsState.selectedUserId = uid;
+      await loadUserSessions(uid);
+    });
+  });
 }
 
 async function loadUserSessions(userId) {
@@ -3828,8 +3875,8 @@ function renderAdminReportHTML(data) {
     `;
   }
 
-  // 音声再生
-  const audioUrl = data.audioUrl;
+  // 音声再生 - v4.36: sessionオブジェクトからも取得
+  const audioUrl = data.audioUrl || data.session?.audioUrl;
   if (audioUrl) {
     html += `
       <div style="margin-bottom:16px; padding:12px; background:#f9fafb; border-radius:6px">

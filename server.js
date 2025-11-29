@@ -724,7 +724,8 @@ app.get("/api/sessions/:id", requireAuth, async (req, res) => {
       session: sessionData, 
       messages, 
       analysis: sessionData.analysis || null,
-      selectedEvalItems  // Version 4.25
+      selectedEvalItems,  // Version 4.25
+      audioUrl: sessionData.audioUrl || null  // v4.36: 音声URLを明示的に返す
     });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
