@@ -40,6 +40,12 @@ function showPane(id){
     const el = $(pid); if (!el) continue;
     el.style.display = (pid===id) ? "" : "none";
   }
+  
+  // v4.35: ユーザー別評価結果以外のペインでは管理メニューを表示
+  const adminNav = document.querySelector(".admin-nav");
+  if (adminNav) {
+    adminNav.style.display = (id === "pane-user-results") ? "none" : "";
+  }
 }
 
 document.addEventListener("DOMContentLoaded", ()=>{
@@ -3484,15 +3490,26 @@ async function mountUserResultsPane() {
   const pane = $("pane-user-results");
   if (!pane) return;
 
+  // 管理メニューを折りたたむ
+  const adminNav = document.querySelector(".admin-nav");
+  if (adminNav) {
+    adminNav.style.display = "none";
+  }
+
   pane.innerHTML = `
-    <h3>ユーザー別評価結果</h3>
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
+      <button id="urBackBtn" style="padding:8px 16px; background:#f3f4f6; border:1px solid #d1d5db; border-radius:6px; cursor:pointer; font-size:13px">
+        ← メニューに戻る
+      </button>
+      <h3 style="margin:0">ユーザー別評価結果</h3>
+    </div>
     <div class="muted small" style="margin-bottom:12px">学生の評価結果を確認できます。ユーザーを選択→セッションを選択してください。</div>
     
     <!-- 3カラムレイアウト: ユーザー一覧 | セッション一覧 | 評価結果 -->
-    <div style="display:grid; grid-template-columns:200px 280px 1fr; gap:12px; min-height:550px">
+    <div style="display:grid; grid-template-columns:200px 280px 1fr; gap:12px; min-height:600px">
       
       <!-- 左側：ユーザー一覧 -->
-      <div style="background:#f9fafb; border-radius:8px; padding:12px; overflow-y:auto; max-height:600px">
+      <div style="background:#f9fafb; border-radius:8px; padding:12px; overflow-y:auto; max-height:700px">
         <div style="font-weight:600; margin-bottom:8px; color:#374151; font-size:13px">ユーザー一覧</div>
         <div id="urUserList">
           <div class="muted small">読み込み中...</div>
@@ -3500,7 +3517,7 @@ async function mountUserResultsPane() {
       </div>
       
       <!-- 中央：セッション一覧 -->
-      <div style="background:#f9fafb; border-radius:8px; padding:12px; overflow-y:auto; max-height:600px">
+      <div style="background:#f9fafb; border-radius:8px; padding:12px; overflow-y:auto; max-height:700px">
         <div style="font-weight:600; margin-bottom:8px; color:#374151; font-size:13px">実施履歴</div>
         <div id="urSessionList">
           <div class="muted small" style="padding:20px; text-align:center">ユーザーを選択してください</div>
@@ -3508,7 +3525,7 @@ async function mountUserResultsPane() {
       </div>
       
       <!-- 右側：評価結果 -->
-      <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px; overflow-y:auto; max-height:600px">
+      <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px; overflow-y:auto; max-height:700px">
         <div id="urResultContent">
           <div class="muted" style="text-align:center; padding:40px">
             <div style="font-size:48px; margin-bottom:12px">📋</div>
@@ -3518,6 +3535,20 @@ async function mountUserResultsPane() {
       </div>
     </div>
   `;
+
+  // 戻るボタンのイベント
+  const backBtn = $("urBackBtn");
+  if (backBtn) {
+    backBtn.addEventListener("click", () => {
+      // 管理メニューを表示
+      if (adminNav) {
+        adminNav.style.display = "";
+      }
+      // 全般設定に戻る
+      showPane("pane-settings");
+      mountSettingsPane();
+    });
+  }
 
   // ユーザー一覧を取得
   await loadUserResultsUsers();
@@ -3793,6 +3824,51 @@ function renderAdminReportHTML(data) {
         <ul style="margin:0; padding-left:20px">
           ${improvements.map(p => `<li style="margin-bottom:4px">${esc(p)}</li>`).join("")}
         </ul>
+      </div>
+    `;
+  }
+
+  // 音声再生
+  const audioUrl = data.audioUrl;
+  if (audioUrl) {
+    html += `
+      <div style="margin-bottom:16px; padding:12px; background:#f9fafb; border-radius:6px">
+        <div style="font-weight:700; margin-bottom:8px">🎙️ 録音音声</div>
+        <audio controls style="width:100%" src="${esc(audioUrl)}">
+          お使いのブラウザは音声再生に対応していません。
+        </audio>
+      </div>
+    `;
+  }
+
+  // 会話ログ
+  const messages = data.messages || [];
+  if (messages.length > 0) {
+    html += `
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid #e5e7eb">
+        <div style="font-weight:700; margin-bottom:12px">💬 会話ログ</div>
+        <div style="max-height:400px; overflow-y:auto; background:#f9fafb; border-radius:6px; padding:12px">
+    `;
+    
+    for (const msg of messages) {
+      const isNurse = msg.who === "nurse";
+      const bgColor = isNurse ? "#dbeafe" : "#fce7f3";
+      const labelColor = isNurse ? "#1e40af" : "#9f1239";
+      const label = isNurse ? "看護師" : "患者";
+      const align = isNurse ? "flex-end" : "flex-start";
+      
+      html += `
+        <div style="display:flex; justify-content:${align}; margin-bottom:8px">
+          <div style="max-width:80%; padding:8px 12px; background:${bgColor}; border-radius:8px">
+            <div style="font-size:10px; font-weight:600; color:${labelColor}; margin-bottom:2px">${label}</div>
+            <div style="font-size:13px; color:#374151">${esc(msg.text || "")}</div>
+          </div>
+        </div>
+      `;
+    }
+    
+    html += `
+        </div>
       </div>
     `;
   }
