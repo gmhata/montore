@@ -3045,6 +3045,69 @@ app.patch("/api/admin/users/:uid", requireAuth, requireAdmin, async (req, res) =
   }
 });
 
+// v4.33: GET /api/admin/users/:uid/sessions - ユーザー別セッション一覧取得
+app.get("/api/admin/users/:uid/sessions", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ ok: false, error: "db not ready" });
+    
+    const uid = req.params.uid;
+    if (!uid) return res.status(400).json({ ok: false, error: "uid required" });
+    
+    console.log(`[GET /api/admin/users/${uid}/sessions] Fetching sessions for user ${uid}`);
+    
+    // ユーザーのセッションを取得（新しい順）
+    const sessionsSnapshot = await db.collection("sessions")
+      .where("uid", "==", uid)
+      .orderBy("createdAt", "desc")
+      .limit(100)
+      .get();
+    
+    const sessions = [];
+    for (const doc of sessionsSnapshot.docs) {
+      const data = doc.data();
+      const analysis = data.analysis || {};
+      const report = analysis.report || {};
+      
+      // 100点換算スコアを計算
+      let score100 = null;
+      if (report.rubric && Array.isArray(report.rubric)) {
+        const selectedItems = data.cfg?.selectedEvalItems || report.selectedEvalItems || null;
+        const selectedSet = selectedItems ? new Set(selectedItems) : null;
+        const evalItemIds = ["intro", "chief", "opqrst", "ros", "history", "reason", "vitals", "exam", "progress"];
+        
+        let totalScore = 0;
+        let totalMax = 0;
+        report.rubric.forEach((item, i) => {
+          const itemId = evalItemIds[i];
+          const isSelected = !selectedSet || selectedSet.has(itemId);
+          if (isSelected) {
+            totalScore += item.score || 0;
+            totalMax += 2;
+          }
+        });
+        
+        score100 = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : null;
+      }
+      
+      sessions.push({
+        id: doc.id,
+        createdAt: data.createdAt,
+        patientName: data.cfg?.patient?.name || data.cfg?.persona?.name || "患者名なし",
+        score100,
+        hasAnalysis: !!data.analysis,
+        selectedEvalItems: data.cfg?.selectedEvalItems || report.selectedEvalItems || null
+      });
+    }
+    
+    console.log(`[GET /api/admin/users/${uid}/sessions] Found ${sessions.length} sessions`);
+    res.json({ ok: true, sessions });
+    
+  } catch (e) {
+    console.error(`[GET /api/admin/users/:uid/sessions] Error:`, e);
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 // DELETE /api/admin/users/:uid - ユーザー削除
 app.delete("/api/admin/users/:uid", requireAuth, requireAdmin, async (req, res) => {
   try {

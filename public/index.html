@@ -580,7 +580,7 @@
           <button id="btnLogout" class="secondary" style="display:none">ログアウト</button>
         </div>
       </div>
-      <div class="version-badge">version: 4.32</div>
+      <div class="version-badge">version: 4.33</div>
     </section>
 
     <!-- トップ -->
@@ -625,7 +625,7 @@
           </div>
         </div>
       </div>
-      <div class="version-badge">version: 4.32</div>
+      <div class="version-badge">version: 4.33</div>
     </section>
 
     <!-- 対話 -->
@@ -793,6 +793,7 @@
           <button class="admin-menu" data-target="pane-users">ユーザー管理</button>
           <button class="admin-menu" data-target="pane-patient-creation">患者管理</button>
           <button class="admin-menu" data-target="pane-stats">学修管理</button>
+          <button class="admin-menu" data-target="pane-user-results">ユーザー別評価結果</button>
           <button class="admin-menu" data-target="pane-scenarios">キーワード管理</button>
           <button class="admin-menu" data-target="pane-analysis">統計</button>
           <button class="admin-menu" data-target="pane-ai-analysis">AI分析</button>
@@ -822,6 +823,13 @@
           <div id="pane-stats" class="card" style="display:none">
             <h3>学修管理</h3>
             <div class="muted small">読込中に少し時間がかかることがあります。</div>
+          </div>
+
+          <!-- v4.33: ユーザー別評価結果 -->
+          <div id="pane-user-results" class="card" style="display:none">
+            <h3>ユーザー別評価結果</h3>
+            <div class="muted small" style="margin-bottom:12px">学生の評価結果を確認できます。</div>
+            <!-- 内容はadmin.jsで動的に生成 -->
           </div>
 
           <div id="pane-scenarios" class="card" style="display:none">
@@ -1008,7 +1016,7 @@
   <script src="/firebase-config.js?v=4.11" onerror="console.warn('firebase-config.js not found, using placeholder')"></script>
   
   <script type="module" src="/auth.js?v=4.11"></script>
-  <script type="module" src="/practice.js?v=4.32"></script>
+  <script type="module" src="/practice.js?v=4.33"></script>
   <script type="module" src="/admin.js?v=4.25"></script>
 
   <script>

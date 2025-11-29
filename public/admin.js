@@ -35,7 +35,7 @@ function escapeCSV(value) {
 }
 
 function showPane(id){
-  const ids = ["pane-settings","pane-users","pane-patient-creation","pane-stats","pane-scenarios","pane-analysis","pane-ai-analysis"];
+  const ids = ["pane-settings","pane-users","pane-patient-creation","pane-stats","pane-user-results","pane-scenarios","pane-analysis","pane-ai-analysis"];
   for(const pid of ids){
     const el = $(pid); if (!el) continue;
     el.style.display = (pid===id) ? "" : "none";
@@ -53,6 +53,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
       if (target === "pane-users")               refreshUsers();
       if (target === "pane-patient-creation")    mountPatientCreationPane();
       if (target === "pane-stats")               mountLearningPane();
+      if (target === "pane-user-results")        mountUserResultsPane();
       if (target === "pane-scenarios")           mountScenariosPane();
       if (target === "pane-analysis")            mountAnalysisPane();
       if (target === "pane-ai-analysis")         mountAIAnalysisPane();
@@ -3469,5 +3470,322 @@ async function deleteAdminPatient(patientId) {
     alert("患者の削除に失敗しました: " + (error.message || String(error)));
     throw error; // エラーを上位に伝播
   }
+}
+
+/* ====================== v4.33: ユーザー別評価結果 ====================== */
+let userResultsState = {
+  users: [],
+  selectedUserId: null,
+  sessions: [],
+  selectedSessionId: null
+};
+
+async function mountUserResultsPane() {
+  const pane = $("pane-user-results");
+  if (!pane) return;
+
+  pane.innerHTML = `
+    <h3>ユーザー別評価結果</h3>
+    <div class="muted small" style="margin-bottom:12px">学生の評価結果を確認できます。ユーザーを選択してセッションを表示します。</div>
+    
+    <!-- ユーザー選択 -->
+    <div style="margin-bottom:16px">
+      <label style="font-weight:600; margin-bottom:8px; display:block">ユーザー選択</label>
+      <select id="urUserSelect" style="width:100%; max-width:400px; padding:10px; border:1px solid #d1d5db; border-radius:6px; font-size:14px">
+        <option value="">-- ユーザーを選択 --</option>
+      </select>
+    </div>
+    
+    <!-- セッション一覧と評価結果（横並び） -->
+    <div id="urContent" style="display:none">
+      <div style="display:grid; grid-template-columns:320px 1fr; gap:16px; min-height:500px">
+        <!-- 左側：セッション一覧 -->
+        <div style="background:#f9fafb; border-radius:8px; padding:12px; overflow-y:auto; max-height:600px">
+          <div style="font-weight:600; margin-bottom:8px; color:#374151">実施履歴</div>
+          <div id="urSessionList">
+            <div class="muted small">セッションを読み込み中...</div>
+          </div>
+        </div>
+        
+        <!-- 右側：評価結果 -->
+        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px; overflow-y:auto; max-height:600px">
+          <div id="urResultContent">
+            <div class="muted" style="text-align:center; padding:40px">
+              <div style="font-size:48px; margin-bottom:12px">📋</div>
+              <div>左のリストからセッションを選択してください</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div id="urLoading" class="muted" style="text-align:center; padding:40px; display:none">
+      読み込み中...
+    </div>
+  `;
+
+  // ユーザー一覧を取得
+  await loadUserResultsUsers();
+
+  // ユーザー選択イベント
+  const userSelect = $("urUserSelect");
+  if (userSelect) {
+    userSelect.addEventListener("change", async (e) => {
+      const userId = e.target.value;
+      if (userId) {
+        userResultsState.selectedUserId = userId;
+        await loadUserSessions(userId);
+      } else {
+        userResultsState.selectedUserId = null;
+        $("urContent").style.display = "none";
+      }
+    });
+  }
+}
+
+async function loadUserResultsUsers() {
+  try {
+    const token = await getIdToken();
+    if (!token) return;
+
+    const resp = await fetch("/api/admin/users", {
+      headers: { Authorization: "Bearer " + token }
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "取得失敗");
+
+    userResultsState.users = data.users || [];
+
+    const select = $("urUserSelect");
+    if (select) {
+      select.innerHTML = '<option value="">-- ユーザーを選択 --</option>';
+      for (const user of userResultsState.users) {
+        const opt = document.createElement("option");
+        opt.value = user.uid;
+        opt.textContent = `${user.displayName || user.email || "名前なし"} (${user.email || "メールなし"})`;
+        select.appendChild(opt);
+      }
+    }
+  } catch (e) {
+    console.error("[loadUserResultsUsers] Error:", e);
+  }
+}
+
+async function loadUserSessions(userId) {
+  const content = $("urContent");
+  const loading = $("urLoading");
+  const sessionList = $("urSessionList");
+  const resultContent = $("urResultContent");
+
+  if (loading) loading.style.display = "block";
+  if (content) content.style.display = "none";
+
+  try {
+    const token = await getIdToken();
+    if (!token) return;
+
+    const resp = await fetch(`/api/admin/users/${userId}/sessions`, {
+      headers: { Authorization: "Bearer " + token }
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "取得失敗");
+
+    userResultsState.sessions = data.sessions || [];
+
+    if (loading) loading.style.display = "none";
+    if (content) content.style.display = "block";
+
+    // セッション一覧を描画
+    if (sessionList) {
+      if (userResultsState.sessions.length === 0) {
+        sessionList.innerHTML = '<div class="muted small" style="padding:20px; text-align:center">実施履歴がありません</div>';
+      } else {
+        sessionList.innerHTML = userResultsState.sessions.map(s => {
+          const date = s.createdAt ? new Date(s.createdAt).toLocaleString("ja-JP") : "日時不明";
+          const patientName = s.patientName || "患者名なし";
+          const score = s.score100 != null ? `${s.score100}点` : "未評価";
+          return `
+            <div class="ur-session-item" data-session-id="${esc(s.id)}" style="
+              padding:12px; 
+              margin-bottom:8px; 
+              background:white; 
+              border:1px solid #e5e7eb; 
+              border-radius:6px; 
+              cursor:pointer;
+              transition: all 0.15s ease;
+            " onmouseover="this.style.borderColor='#ec4899'" onmouseout="this.style.borderColor='#e5e7eb'">
+              <div style="font-weight:600; font-size:13px; color:#374151">${esc(patientName)}</div>
+              <div style="font-size:12px; color:#6b7280; margin-top:4px">${date}</div>
+              <div style="font-size:12px; color:#ec4899; font-weight:600; margin-top:4px">${score}</div>
+            </div>
+          `;
+        }).join("");
+
+        // セッションクリックイベント
+        sessionList.querySelectorAll(".ur-session-item").forEach(item => {
+          item.addEventListener("click", async () => {
+            const sessionId = item.getAttribute("data-session-id");
+            // 選択状態を更新
+            sessionList.querySelectorAll(".ur-session-item").forEach(el => {
+              el.style.borderColor = "#e5e7eb";
+              el.style.background = "white";
+            });
+            item.style.borderColor = "#ec4899";
+            item.style.background = "#fdf2f8";
+            
+            await loadSessionResult(sessionId);
+          });
+        });
+      }
+    }
+
+    // 結果エリアをリセット
+    if (resultContent) {
+      resultContent.innerHTML = `
+        <div class="muted" style="text-align:center; padding:40px">
+          <div style="font-size:48px; margin-bottom:12px">📋</div>
+          <div>左のリストからセッションを選択してください</div>
+        </div>
+      `;
+    }
+
+  } catch (e) {
+    console.error("[loadUserSessions] Error:", e);
+    if (loading) loading.style.display = "none";
+    if (sessionList) {
+      sessionList.innerHTML = `<div class="err">エラー: ${esc(e.message)}</div>`;
+    }
+  }
+}
+
+async function loadSessionResult(sessionId) {
+  const resultContent = $("urResultContent");
+  if (!resultContent) return;
+
+  resultContent.innerHTML = '<div class="muted" style="text-align:center; padding:20px">読み込み中...</div>';
+
+  try {
+    const token = await getIdToken();
+    if (!token) return;
+
+    const resp = await fetch(`/api/sessions/${sessionId}`, {
+      headers: { Authorization: "Bearer " + token }
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "取得失敗");
+
+    // 評価結果を描画（practice.jsのrenderReportHTMLと同様の形式）
+    resultContent.innerHTML = renderAdminReportHTML(data);
+
+  } catch (e) {
+    console.error("[loadSessionResult] Error:", e);
+    resultContent.innerHTML = `<div class="err" style="padding:20px">エラー: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderAdminReportHTML(data) {
+  const analysis = data.analysis || {};
+  const report = analysis.report || {};
+  const rubric = report.rubric || [];
+  const summary = report.summary || "";
+  const positives = report.positives || [];
+  const improvements = report.improvements || [];
+  const selectedEvalItems = data.selectedEvalItems || report.selectedEvalItems || null;
+
+  // 選択項目のIDセット
+  const selectedSet = selectedEvalItems ? new Set(selectedEvalItems) : null;
+  const evalItemIds = ["intro", "chief", "opqrst", "ros", "history", "reason", "vitals", "exam", "progress"];
+
+  let html = `
+    <h4 style="margin:0 0 12px; color:#ec4899">問診スキル分析レポート</h4>
+    <div class="muted small" style="margin-bottom:12px">（各項目は 2点・1点・0点 の三段階評価）</div>
+  `;
+
+  // ルーブリック表
+  html += `<table style="width:100%; border-collapse:collapse; margin-bottom:20px; font-size:13px">
+    <thead>
+      <tr style="background:#f9fafb">
+        <th style="padding:8px; border:1px solid #e5e7eb; width:30px">#</th>
+        <th style="padding:8px; border:1px solid #e5e7eb; text-align:left">評価軸</th>
+        <th style="padding:8px; border:1px solid #e5e7eb; width:50px">点</th>
+        <th style="padding:8px; border:1px solid #e5e7eb; text-align:left">コメント</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  let totalScore = 0;
+  let totalMax = 0;
+  let evalCount = 0;
+
+  rubric.forEach((item, i) => {
+    const itemId = evalItemIds[i];
+    const isSelected = !selectedSet || selectedSet.has(itemId);
+    
+    if (isSelected) {
+      totalScore += item.score || 0;
+      totalMax += 2;
+      evalCount++;
+    }
+
+    const rowStyle = isSelected ? "" : "background:#f3f4f6; color:#9ca3af;";
+    const scoreDisplay = isSelected ? (item.score || 0) : "－";
+    const commentDisplay = isSelected ? (item.comment || "") : "(評価対象外)";
+
+    html += `
+      <tr style="${rowStyle}">
+        <td style="padding:8px; border:1px solid #e5e7eb; text-align:center">${i + 1}</td>
+        <td style="padding:8px; border:1px solid #e5e7eb">${esc(item.name || "")}</td>
+        <td style="padding:8px; border:1px solid #e5e7eb; text-align:center; font-weight:600">${scoreDisplay}</td>
+        <td style="padding:8px; border:1px solid #e5e7eb; color:#6b7280">${esc(commentDisplay)}</td>
+      </tr>
+    `;
+  });
+
+  html += `</tbody></table>`;
+
+  // 合計スコア
+  const score100 = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
+  html += `
+    <div style="margin-bottom:20px; padding:12px; background:#fdf2f8; border-radius:6px">
+      <div style="font-weight:700; font-size:16px">合計: ${totalScore} / ${totalMax}（100点換算: ${score100}）</div>
+      <div class="muted small">評価対象: ${evalCount}項目　（満点: ${totalMax}点 = ${evalCount}項目 × 2点）</div>
+    </div>
+  `;
+
+  // 総評
+  if (summary) {
+    html += `
+      <div style="margin-bottom:16px">
+        <div style="font-weight:700; margin-bottom:8px">総評</div>
+        <div style="padding:12px; background:#f0fdf4; border-radius:6px; color:#166534">${esc(summary)}</div>
+      </div>
+    `;
+  }
+
+  // 良かった点
+  if (positives.length > 0) {
+    html += `
+      <div style="margin-bottom:16px">
+        <div style="font-weight:700; margin-bottom:8px; color:#059669">良かった点</div>
+        <ul style="margin:0; padding-left:20px">
+          ${positives.map(p => `<li style="margin-bottom:4px">${esc(p)}</li>`).join("")}
+        </ul>
+      </div>
+    `;
+  }
+
+  // 改善が必要な点
+  if (improvements.length > 0) {
+    html += `
+      <div style="margin-bottom:16px">
+        <div style="font-weight:700; margin-bottom:8px; color:#dc2626">改善が必要な点</div>
+        <ul style="margin:0; padding-left:20px">
+          ${improvements.map(p => `<li style="margin-bottom:4px">${esc(p)}</li>`).join("")}
+        </ul>
+      </div>
+    `;
+  }
+
+  return html;
 }
 
