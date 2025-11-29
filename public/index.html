@@ -580,7 +580,7 @@
           <button id="btnLogout" class="secondary" style="display:none">ログアウト</button>
         </div>
       </div>
-      <div class="version-badge">version: 4.37</div>
+      <div class="version-badge">version: 4.38</div>
     </section>
 
     <!-- トップ -->
@@ -625,7 +625,7 @@
           </div>
         </div>
       </div>
-      <div class="version-badge">version: 4.37</div>
+      <div class="version-badge">version: 4.38</div>
     </section>
 
     <!-- 対話 -->
@@ -702,15 +702,38 @@
       </div>
     </section>
 
-    <!-- 学修履歴 -->
+    <!-- 学修履歴 v4.38: 2カラムレイアウト -->
     <section id="screen-history" class="screen">
-      <div class="card">
-        <h3>学修履歴</h3>
-        <div class="muted small" style="margin-bottom:12px">過去の対話セッションを確認できます。</div>
+      <div class="card" style="max-width:1400px">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
+          <button id="backFromHistory" class="back-to-menu" style="margin:0; padding:8px 16px">← メニューに戻る</button>
+          <h3 style="margin:0">学修履歴</h3>
+        </div>
+        <div class="muted small" style="margin-bottom:12px">過去の対話セッションを確認できます。セッションを選択すると詳細が表示されます。</div>
+        
         <div id="historyLoading" class="muted">読み込み中...</div>
         <div id="historyError" class="callout" style="display:none"></div>
-        <div id="historyList" style="display:none"></div>
-        <button id="backFromHistory" class="back-to-menu">メニューに戻る</button>
+        
+        <!-- 2カラムレイアウト -->
+        <div id="historyContainer" style="display:none">
+          <div style="display:grid; grid-template-columns:320px 1fr; gap:16px; min-height:500px">
+            <!-- 左側: セッションリスト -->
+            <div style="background:#f9fafb; border-radius:8px; padding:12px; overflow-y:auto; max-height:700px">
+              <div style="font-weight:600; margin-bottom:8px; color:#374151; font-size:13px">セッション一覧</div>
+              <div id="historyList"></div>
+            </div>
+            
+            <!-- 右側: 詳細表示 -->
+            <div style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px; overflow-y:auto; max-height:700px">
+              <div id="historyDetail">
+                <div class="muted" style="text-align:center; padding:60px 20px">
+                  <div style="font-size:48px; margin-bottom:12px">📋</div>
+                  <div>セッションを選択してください</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

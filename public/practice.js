@@ -3291,15 +3291,34 @@ function renderConversationLog(messages){
 /* エスケープ */
 function esc(s){ return String(s||"").replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m])); }
 
-/* 学修履歴 */
+/* 学修履歴 v4.38: 2カラムレイアウト対応 */
+let historyState = {
+  sessions: [],
+  selectedSessionId: null
+};
+
 async function onGoHistory(){
   show("screen-history");
   const loading = $("historyLoading");
   const error = $("historyError");
+  const container = $("historyContainer");
   const list = $("historyList");
+  const detail = $("historyDetail");
+  
   if (loading) loading.style.display = "";
   if (error) error.style.display = "none";
-  if (list) list.style.display = "none";
+  if (container) container.style.display = "none";
+  
+  // 詳細をリセット
+  historyState.selectedSessionId = null;
+  if (detail) {
+    detail.innerHTML = `
+      <div class="muted" style="text-align:center; padding:60px 20px">
+        <div style="font-size:48px; margin-bottom:12px">📋</div>
+        <div>セッションを選択してください</div>
+      </div>
+    `;
+  }
 
   try {
     const t = window.getIdTokenAsync ? await window.getIdTokenAsync() : null;
@@ -3312,54 +3331,20 @@ async function onGoHistory(){
     const j = await r.json();
     if (!r.ok) throw new Error(j?.error || "取得失敗");
     
-    const sessions = j.sessions || [];
+    historyState.sessions = j.sessions || [];
     if (loading) loading.style.display = "none";
     
-    if (!sessions.length) {
+    if (!historyState.sessions.length) {
       if (list) {
-        list.innerHTML = '<div class="muted">まだ学修履歴がありません。問診練習で対話を始めてください。</div>';
-        list.style.display = "";
+        list.innerHTML = '<div class="muted" style="padding:20px; text-align:center">まだ学修履歴がありません。<br>問診練習で対話を始めてください。</div>';
       }
+      if (container) container.style.display = "";
       return;
     }
     
-    // 履歴を表示（1行コンパクト表示）
-    let html = '<div style="display:flex;flex-direction:column;gap:8px">';
-    for (const s of sessions) {
-      const date = new Date(s.createdAt || 0);
-      const dateStr = date.toLocaleString("ja-JP", { year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" });
-      const scoreLabel = s.score100 != null ? `${s.score100}点` : "未採点";
-      const patientName = s.patient?.name || s.persona?.name || "患者名不明";
-      const speakingRateLabel = s.avgSpeakingRate != null ? ` | ${s.avgSpeakingRate}回/分` : "";
-
-      html += `
-        <div style="border:1px solid #e5e7eb;border-radius:6px;padding:10px 14px;cursor:pointer;transition:0.12s;background:#fff;display:flex;justify-content:space-between;align-items:center"
-             class="history-item" data-session-id="${esc(s.id)}">
-          <div style="display:flex;gap:12px;align-items:center;flex:1;min-width:0">
-            <div style="font-weight:700;white-space:nowrap">${esc(patientName)}</div>
-            <div style="font-size:12px;color:#6b7280;white-space:nowrap">${dateStr}</div>
-            <div style="font-size:12px;color:#9ca3af;white-space:nowrap">会話: ${s.messageCount}件${speakingRateLabel}</div>
-          </div>
-          <div style="font-size:13px;font-weight:700;color:${s.score100 != null ? '#111827' : '#9ca3af'};white-space:nowrap;margin-left:12px">
-            ${scoreLabel}
-          </div>
-        </div>
-      `;
-    }
-    html += '</div>';
-    
-    if (list) {
-      list.innerHTML = html;
-      list.style.display = "";
-      
-      // クリックイベント: セッション詳細を表示
-      list.querySelectorAll(".history-item").forEach(item => {
-        item.addEventListener("click", async () => {
-          const sessionId = item.getAttribute("data-session-id");
-          await showSessionDetail(sessionId);
-        });
-      });
-    }
+    // セッションリストを描画
+    renderHistoryList();
+    if (container) container.style.display = "";
     
   } catch (e) {
     if (loading) loading.style.display = "none";
@@ -3370,8 +3355,68 @@ async function onGoHistory(){
   }
 }
 
-// セッション詳細を表示
-async function showSessionDetail(sessionId){
+// v4.38: セッションリストを描画
+function renderHistoryList() {
+  const list = $("historyList");
+  if (!list) return;
+  
+  let html = '';
+  for (const s of historyState.sessions) {
+    const date = new Date(s.createdAt || 0);
+    const dateStr = date.toLocaleString("ja-JP", { month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" });
+    const scoreLabel = s.score100 != null ? `${s.score100}点` : "未採点";
+    const patientName = s.patient?.name || s.persona?.name || "患者名不明";
+    const isSelected = s.id === historyState.selectedSessionId;
+    const borderColor = isSelected ? "#ec4899" : "#e5e7eb";
+    const bgColor = isSelected ? "#fdf2f8" : "white";
+
+    html += `
+      <div class="history-item" data-session-id="${esc(s.id)}" style="
+        padding:10px;
+        margin-bottom:6px;
+        background:${bgColor};
+        border:1px solid ${borderColor};
+        border-radius:6px;
+        cursor:pointer;
+        transition: all 0.15s ease;
+      ">
+        <div style="font-weight:600; font-size:13px; color:#374151">${esc(patientName)}</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px">
+          <div style="font-size:11px; color:#6b7280">${dateStr}</div>
+          <div style="font-size:12px; font-weight:700; color:${s.score100 != null ? '#ec4899' : '#9ca3af'}">${scoreLabel}</div>
+        </div>
+      </div>
+    `;
+  }
+  
+  list.innerHTML = html;
+  
+  // クリックイベント
+  list.querySelectorAll(".history-item").forEach(item => {
+    item.addEventListener("click", async () => {
+      const sessionId = item.getAttribute("data-session-id");
+      
+      // 選択状態を更新
+      list.querySelectorAll(".history-item").forEach(el => {
+        el.style.borderColor = "#e5e7eb";
+        el.style.background = "white";
+      });
+      item.style.borderColor = "#ec4899";
+      item.style.background = "#fdf2f8";
+      
+      historyState.selectedSessionId = sessionId;
+      await showHistoryDetail(sessionId);
+    });
+  });
+}
+
+// v4.38: 学修履歴の詳細を右側パネルに表示
+async function showHistoryDetail(sessionId) {
+  const detail = $("historyDetail");
+  if (!detail) return;
+  
+  detail.innerHTML = '<div class="muted" style="text-align:center; padding:40px">読み込み中...</div>';
+  
   try {
     const t = window.getIdTokenAsync ? await window.getIdTokenAsync() : null;
     if (!t) throw new Error("認証が必要です");
@@ -3385,140 +3430,164 @@ async function showSessionDetail(sessionId){
     // Version 4.25: サーバーからの評価項目情報で上書き
     if (j.selectedEvalItems && Array.isArray(j.selectedEvalItems)) {
       window.__currentSelectedEvalItems = j.selectedEvalItems;
-      console.log('[showSessionDetail] Loaded selectedEvalItems from server:', j.selectedEvalItems);
     } else {
-      // 全項目選択（旧データとの互換性）
       window.__currentSelectedEvalItems = EVALUATION_ITEMS.map(item => item.id);
-      console.log('[showSessionDetail] No selectedEvalItems, using all items');
     }
     
-    // 結果画面に表示
-    $("rsSid") && ($("rsSid").textContent = sessionId);
-    $("rsOut") && ($("rsOut").innerHTML = renderReportHTML(j?.analysis || j?.session?.analysis || null));
-    $("rsLog") && ($("rsLog").innerHTML = renderConversationLog(Array.isArray(j.messages) ? j.messages : []));
+    // 詳細HTMLを生成
+    detail.innerHTML = renderHistoryDetailHTML(j, sessionId);
+    
+  } catch (e) {
+    detail.innerHTML = `<div class="err" style="padding:20px">エラー: ${esc(e?.message || String(e))}</div>`;
+  }
+}
 
-    // 音声再生プレーヤーを追加
-    const audioUrl = j?.session?.audioUrl;
-    console.log('[Audio Player] History - Session data:', j?.session);
-    console.log('[Audio Player] History - Audio URL:', audioUrl);
-    console.log('[Audio Player] History - audioUrl type:', typeof audioUrl);
-    console.log('[Audio Player] History - audioUrl exists:', !!audioUrl);
-    console.log('[Audio Player] History - Session ID:', sessionId);
-    const rsAudioContainer = $("rsAudioPlayer");
-    console.log('[Audio Player] History - Container element:', rsAudioContainer);
-    console.log('[Audio Player] History - Container display:', rsAudioContainer?.style.display);
-    if (rsAudioContainer) {
-      // 常に内容をクリア
-      rsAudioContainer.innerHTML = "";
-
-      // 常に音声再生セクションを表示（audioUrlの有無に関わらず）
-      const wrapper = document.createElement('div');
-      wrapper.style.cssText = 'margin:16px 0;padding:14px;background:#f3f4f6;border-radius:8px;position:relative;z-index:200;pointer-events:auto;';
+// v4.38: 学修履歴詳細のHTML生成
+function renderHistoryDetailHTML(data, sessionId) {
+  const analysis = data.analysis || data.session?.analysis || {};
+  const report = analysis.report || {};
+  const rubric = report.rubric || [];
+  const summary = report.summary || "";
+  const positives = report.positives || [];
+  const improvements = report.improvements || [];
+  const messages = data.messages || [];
+  const audioUrl = data.audioUrl || data.session?.audioUrl;
+  const selectedEvalItems = data.selectedEvalItems || report.selectedEvalItems || null;
+  
+  const selectedSet = selectedEvalItems ? new Set(selectedEvalItems) : null;
+  const evalItemIds = ["intro", "chief", "opqrst", "ros", "history", "reason", "vitals", "exam", "progress"];
+  
+  let html = `<h4 style="margin:0 0 12px; color:#ec4899">問診スキル分析レポート</h4>`;
+  html += `<div class="muted small" style="margin-bottom:12px">セッションID: ${esc(sessionId)}</div>`;
+  
+  // ルーブリック表
+  if (rubric.length > 0) {
+    html += `<table style="width:100%; border-collapse:collapse; margin-bottom:16px; font-size:12px">
+      <thead>
+        <tr style="background:#f9fafb">
+          <th style="padding:6px; border:1px solid #e5e7eb; text-align:left">評価軸</th>
+          <th style="padding:6px; border:1px solid #e5e7eb; width:40px">点</th>
+          <th style="padding:6px; border:1px solid #e5e7eb; text-align:left">コメント</th>
+        </tr>
+      </thead>
+      <tbody>`;
+    
+    let totalScore = 0;
+    let totalMax = 0;
+    
+    rubric.forEach((item, i) => {
+      const itemId = evalItemIds[i];
+      const isSelected = !selectedSet || selectedSet.has(itemId);
       
-      const label = document.createElement('div');
-      label.style.cssText = 'font-weight:600;margin-bottom:8px;font-size:14px;color:#1f2937;';
-      label.textContent = '音声再生';
-      wrapper.appendChild(label);
-      
-      if (audioUrl) {
-        // Audio URL が存在する場合：プレーヤーを表示
-        // Signed URL検出
-        const isSignedUrl = audioUrl.includes('X-Goog-Signature') || audioUrl.includes('Signature=');
-        console.log('[Audio Player] History - URL type:', isSignedUrl ? 'Signed URL' : 'Public URL');
-        console.log('[Audio Player] History - Full audio URL:', audioUrl);
-        
-        const audioEl = document.createElement('audio');
-        audioEl.setAttribute('controls', '');
-        audioEl.setAttribute('preload', 'metadata');
-        audioEl.setAttribute('controlsList', 'nodownload');
-        
-        // Signed URLの場合はcrossoriginを設定しない
-        if (!isSignedUrl) {
-          audioEl.setAttribute('crossorigin', 'anonymous');
-        }
-        
-        audioEl.style.cssText = 'width:100%;max-width:500px;display:block;pointer-events:auto;cursor:pointer;position:relative;z-index:201;';
-        
-        // Signed URLの場合はクエリパラメータを追加しない（署名が無効になる）
-        audioEl.src = isSignedUrl ? audioUrl : `${audioUrl}?t=${Date.now()}`;
-        
-        // Add direct event listeners to ensure clicks are captured
-        audioEl.addEventListener('click', (e) => {
-          console.log('[Audio Player] History - Click event captured on audio element');
-          e.stopPropagation();
-        }, true);
-        
-        audioEl.addEventListener('play', () => {
-          console.log('[Audio Player] History - Play event - audio started');
-        });
-        
-        audioEl.addEventListener('error', (e) => {
-          console.error('[Audio Player] History - Error loading audio:', e);
-          console.error('[Audio Player] History - Error details:', {
-            audioUrl: audioUrl,
-            networkState: audioEl.networkState,
-            readyState: audioEl.readyState,
-            errorCode: audioEl.error?.code,
-            errorMessage: audioEl.error?.message
-          });
-          // Try to fetch the URL directly to check CORS
-          fetch(audioUrl, { method: 'HEAD' })
-            .then(response => {
-              console.log('[Audio Player] History - HEAD request successful:', response.status, response.headers);
-            })
-            .catch(err => {
-              console.error('[Audio Player] History - HEAD request failed:', err);
-            });
-        });
-        
-        wrapper.appendChild(audioEl);
-        console.log('[Audio Player] History - Audio player displayed for session:', sessionId);
-      } else {
-        // Audio URL が存在しない場合：メッセージを表示
-        const message = document.createElement('div');
-        message.style.cssText = 'padding:12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;color:#92400e;font-size:13px;';
-        message.innerHTML = `
-          <div style="font-weight:600;margin-bottom:4px;">📌 音声録音が利用できません</div>
-          <div>このセッションでは音声が記録されていません。</div>
-        `;
-        wrapper.appendChild(message);
-        console.log('[Audio Player] History - No audio URL, displaying message for session:', sessionId);
+      if (isSelected) {
+        totalScore += item.score || 0;
+        totalMax += 2;
       }
       
-      rsAudioContainer.appendChild(wrapper);
-      rsAudioContainer.style.display = "block";
-      rsAudioContainer.style.position = "relative";
-      rsAudioContainer.style.zIndex = "200";
-      rsAudioContainer.style.pointerEvents = "auto";
-      console.log('[Audio Player] History - Audio section displayed with z-index and pointer-events');
-    } else {
-      console.error('[Audio Player] Container element not found!');
-    }
-
-    // 結果画面の「戻る」ボタンを学修履歴に戻るように変更
-    const backBtn = $("rsBackHome");
-    if (backBtn) {
-      backBtn.textContent = "学修履歴に戻る";
-      backBtn.onclick = () => {
-        backBtn.textContent = "メニューに戻る";
-        backBtn.onclick = null;
-        onGoHistory();
-      };
-    }
-
-    // ステータスパネルを非表示にする
-    hideStatusPanel();
-    const vitalSection = document.getElementById('vitalStatusSection');
-    const examSection = document.getElementById('examStatusSection');
-    const speechSection = document.getElementById('speechStatusSection');
-    if (vitalSection) vitalSection.style.display = 'none';
-    if (examSection) examSection.style.display = 'none';
-    if (speechSection) speechSection.style.display = 'none';
-
-    show("screen-result");
-  } catch (e) {
-    alert("詳細取得エラー: " + (e?.message || String(e)));
+      const rowStyle = isSelected ? "" : "background:#f3f4f6; color:#9ca3af;";
+      const scoreDisplay = isSelected ? (item.score || 0) : "－";
+      const commentDisplay = isSelected ? (item.comment || "") : "(対象外)";
+      
+      html += `
+        <tr style="${rowStyle}">
+          <td style="padding:6px; border:1px solid #e5e7eb">${esc(item.name || "")}</td>
+          <td style="padding:6px; border:1px solid #e5e7eb; text-align:center; font-weight:600">${scoreDisplay}</td>
+          <td style="padding:6px; border:1px solid #e5e7eb; color:#6b7280; font-size:11px">${esc(commentDisplay)}</td>
+        </tr>
+      `;
+    });
+    
+    html += `</tbody></table>`;
+    
+    // 合計スコア
+    const score100 = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
+    html += `
+      <div style="margin-bottom:16px; padding:10px; background:#fdf2f8; border-radius:6px">
+        <div style="font-weight:700; font-size:14px">合計: ${totalScore} / ${totalMax}（100点換算: ${score100}）</div>
+      </div>
+    `;
   }
+  
+  // 総評
+  if (summary) {
+    html += `
+      <div style="margin-bottom:12px">
+        <div style="font-weight:700; margin-bottom:6px; font-size:13px">総評</div>
+        <div style="padding:10px; background:#f0fdf4; border-radius:6px; color:#166534; font-size:12px">${esc(summary)}</div>
+      </div>
+    `;
+  }
+  
+  // 良かった点
+  if (positives.length > 0) {
+    html += `
+      <div style="margin-bottom:12px">
+        <div style="font-weight:700; margin-bottom:6px; color:#059669; font-size:13px">良かった点</div>
+        <ul style="margin:0; padding-left:18px; font-size:12px">
+          ${positives.map(p => `<li style="margin-bottom:2px">${esc(p)}</li>`).join("")}
+        </ul>
+      </div>
+    `;
+  }
+  
+  // 改善が必要な点
+  if (improvements.length > 0) {
+    html += `
+      <div style="margin-bottom:12px">
+        <div style="font-weight:700; margin-bottom:6px; color:#dc2626; font-size:13px">改善が必要な点</div>
+        <ul style="margin:0; padding-left:18px; font-size:12px">
+          ${improvements.map(p => `<li style="margin-bottom:2px">${esc(p)}</li>`).join("")}
+        </ul>
+      </div>
+    `;
+  }
+  
+  // 音声再生
+  if (audioUrl) {
+    const isSignedUrl = audioUrl.includes('X-Goog-Signature') || audioUrl.includes('Signature=');
+    const audioSrc = isSignedUrl ? audioUrl : `${audioUrl}?t=${Date.now()}`;
+    html += `
+      <div style="margin-bottom:12px; padding:10px; background:#f9fafb; border-radius:6px">
+        <div style="font-weight:700; margin-bottom:6px; font-size:13px">🎙️ 録音音声</div>
+        <audio controls style="width:100%" src="${esc(audioSrc)}">
+          お使いのブラウザは音声再生に対応していません。
+        </audio>
+      </div>
+    `;
+  }
+  
+  // 会話ログ
+  if (messages.length > 0) {
+    html += `
+      <div style="margin-top:16px; padding-top:12px; border-top:1px solid #e5e7eb">
+        <div style="font-weight:700; margin-bottom:8px; font-size:13px">💬 会話ログ</div>
+        <div style="max-height:300px; overflow-y:auto; background:#f9fafb; border-radius:6px; padding:10px">
+    `;
+    
+    for (const msg of messages) {
+      const isNurse = msg.who === "nurse";
+      const bgColor = isNurse ? "#dbeafe" : "#fce7f3";
+      const labelColor = isNurse ? "#1e40af" : "#9f1239";
+      const label = isNurse ? "看護師" : "患者";
+      const align = isNurse ? "flex-end" : "flex-start";
+      
+      html += `
+        <div style="display:flex; justify-content:${align}; margin-bottom:6px">
+          <div style="max-width:85%; padding:6px 10px; background:${bgColor}; border-radius:8px">
+            <div style="font-size:9px; font-weight:600; color:${labelColor}; margin-bottom:2px">${label}</div>
+            <div style="font-size:12px; color:#374151">${esc(msg.text || "")}</div>
+          </div>
+        </div>
+      `;
+    }
+    
+    html += `
+        </div>
+      </div>
+    `;
+  }
+  
+  return html;
 }
 
 /* Vital Signs & Physical Examination Modal Functions */
