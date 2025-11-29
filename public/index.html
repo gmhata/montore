@@ -184,21 +184,24 @@
     }
     .practice-actions .start{ width: 12rem; }
 
+    /* v4.39: メニューに戻るボタンのスタイル統一 */
     .back-to-menu{
-      position: fixed;
-      top: 60px;
-      right: 16px;
-      z-index: 100;
-      padding: 6px 12px;
-      font-size: 12px;
+      position: static;
+      padding: 8px 16px;
+      font-size: 13px;
       min-width: auto;
-      background: #fce7f3;
-      color: #9f1239;
-      border-radius: 8px;
+      background: #f3f4f6;
+      color: #ec4899;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
       font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
     }
     .back-to-menu:hover{
-      background: #fbcfe8;
+      background: #ec4899;
+      color: white;
+      border-color: #ec4899;
     }
 
     .nowrap{ white-space:nowrap; }
@@ -580,7 +583,7 @@
           <button id="btnLogout" class="secondary" style="display:none">ログアウト</button>
         </div>
       </div>
-      <div class="version-badge">version: 4.38</div>
+      <div class="version-badge">version: 4.39</div>
     </section>
 
     <!-- トップ -->
@@ -625,7 +628,7 @@
           </div>
         </div>
       </div>
-      <div class="version-badge">version: 4.38</div>
+      <div class="version-badge">version: 4.39</div>
     </section>
 
     <!-- 対話 -->
@@ -661,10 +664,13 @@
       </div>
     </section>
 
-    <!-- 患者選択 -->
+    <!-- 患者選択 v4.39: ボタン配置統一 -->
     <section id="screen-patient-select" class="screen">
       <div class="card">
-        <h3>患者選択</h3>
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
+          <button id="backFromPatientSelect" class="back-to-menu">← メニューに戻る</button>
+          <h3 style="margin:0">患者選択</h3>
+        </div>
         <div class="muted small" style="margin-bottom:12px">左の患者リストから選択すると、右側に詳細情報が表示されます。</div>
         <div id="patientListLoading" class="muted">読み込み中...</div>
         <div id="patientListError" class="callout" style="display:none"></div>
@@ -697,8 +703,6 @@
             </div>
           </div>
         </div>
-        
-        <button id="backFromPatientSelect" class="back-to-menu">メニューに戻る</button>
       </div>
     </section>
 
@@ -706,7 +710,7 @@
     <section id="screen-history" class="screen">
       <div class="card" style="max-width:1400px">
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
-          <button id="backFromHistory" class="back-to-menu" style="margin:0; padding:8px 16px">← メニューに戻る</button>
+          <button id="backFromHistory" class="back-to-menu">← メニューに戻る</button>
           <h3 style="margin:0">学修履歴</h3>
         </div>
         <div class="muted small" style="margin-bottom:12px">過去の対話セッションを確認できます。セッションを選択すると詳細が表示されます。</div>
@@ -737,10 +741,13 @@
       </div>
     </section>
 
-    <!-- AIコーチ -->
+    <!-- AIコーチ v4.39: ボタン配置統一 -->
     <section id="screen-ai-analysis" class="screen">
       <div class="card">
-        <h3>AIコーチ</h3>
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
+          <button id="backFromAIAnalysis" class="back-to-menu">← メニューに戻る</button>
+          <h3 style="margin:0">AIコーチ</h3>
+        </div>
         <div class="muted small" style="margin-bottom:1rem">
           あなたの対話データをAIが分析し、学習をサポートします。自然言語で質問を入力してください。<br>
           <strong>例:</strong> 「私の対話の強みと弱みを教えてください」「スコアを上げるにはどうすればいいですか」「最近の成長を分析してください」
@@ -780,8 +787,6 @@
             <div id="ai-error-student" style="display:none" class="callout"></div>
           </div>
         </div>
-
-        <button id="backFromAIAnalysis" class="back-to-menu" style="margin-top:1.5rem">メニューに戻る</button>
       </div>
     </section>
 
@@ -807,8 +812,12 @@
       </div>
     </section>
 
-    <!-- 管理者画面 -->
+    <!-- 管理者画面 v4.39: ボタン配置統一 -->
     <section id="screen-admin" class="screen">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; padding:0 12px">
+        <button id="backHomeAdmin" class="back-to-menu">← メニューに戻る</button>
+        <h3 style="margin:0">管理画面</h3>
+      </div>
       <div class="admin-wrap">
         <nav class="admin-nav">
           <div class="muted small" id="adminRoleNote">権限確認中…</div>
@@ -930,13 +939,15 @@
           </div>
         </div>
       </div>
-      <button id="backHomeAdmin" class="back-to-menu">メニューに戻る</button>
     </section>
 
-    <!-- マニュアル画面 -->
+    <!-- マニュアル画面 v4.39: ボタン配置統一 -->
     <section id="screen-manual" class="screen">
       <div class="card" style="max-width:900px; margin:0 auto">
-        <h3>マニュアル</h3>
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
+          <button id="backFromManual" class="back-to-menu">← メニューに戻る</button>
+          <h3 style="margin:0">マニュアル</h3>
+        </div>
 
         <div style="margin-bottom:32px">
           <h4 style="color:#ec4899; border-bottom:2px solid #fce7f3; padding-bottom:8px">用語の定義</h4>
@@ -1017,7 +1028,6 @@
           </ul>
         </div>
 
-        <button id="backFromManual" class="back-to-menu" style="margin-top:24px">メニューに戻る</button>
       </div>
     </section>
   </div>

@@ -3496,11 +3496,10 @@ async function mountUserResultsPane() {
     adminNav.style.display = "none";
   }
 
+  // v4.39: ボタンスタイル統一
   pane.innerHTML = `
     <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px">
-      <button id="urBackBtn" style="padding:8px 16px; background:#f3f4f6; border:1px solid #d1d5db; border-radius:6px; cursor:pointer; font-size:13px">
-        ← メニューに戻る
-      </button>
+      <button id="urBackBtn" class="back-to-menu">← メニューに戻る</button>
       <h3 style="margin:0">ユーザー別学修管理</h3>
     </div>
     <div class="muted small" style="margin-bottom:12px">学生の評価結果を確認できます。ユーザーを選択→セッションを選択してください。</div>
