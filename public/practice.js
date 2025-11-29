@@ -103,6 +103,10 @@ let currentScenarioConfig = null; // シナリオ別キーワード設定
 let vitalItemsShown = new Set(); // 表示済みバイタル項目 ('temperature', 'bloodPressure', etc.)
 let examItemsShown = new Set(); // 表示済み身体診察項目 ('inspection', 'palpation', etc.)
 
+// v4.31: 確認モーダル用のキュー（複数検出時に順番に表示）
+let confirmModalQueue = [];
+let isConfirmModalOpen = false;
+
 /* Status Panel Auto-close Timer */
 let statusPanelAutoCloseTimer = null;
 let statusPanelShownOnce = false; // 症状別モードで初回パネル表示を管理
@@ -1666,6 +1670,9 @@ async function startTalk(cfg){
     examItemsShown.clear();
     vitalChecked = false;
     examChecked = false;
+    // v4.31: 確認モーダルのキューをリセット
+    confirmModalQueue = [];
+    isConfirmModalOpen = false;
     
     // 浮遊パネルをクリア
     const floatingContainer = document.getElementById('floatingPanels');
@@ -1706,11 +1713,13 @@ async function startTalk(cfg){
 
     // Version 3.42: 患者の想定バイタル異常に基づいてデータを初期化
     // Version 3.44: デバッグログ追加
+    // v4.31: expectedExamsも追加
     console.log('[startTalk] Initializing vital and exam data with patient expected vitals');
     console.log('[startTalk] cfg.patient:', cfg.patient);
     console.log('[startTalk] expectedVitals:', cfg.patient?.expectedVitals);
     console.log('[startTalk] customVitals:', cfg.patient?.customVitals);
-    initializeVitalAndExamData(cfg.patient?.expectedVitals, cfg.patient?.customVitals);
+    console.log('[startTalk] expectedExams:', cfg.patient?.expectedExams);
+    initializeVitalAndExamData(cfg.patient?.expectedVitals, cfg.patient?.customVitals, cfg.patient?.expectedExams);
 
     // Mic
     try {
@@ -2246,12 +2255,15 @@ async function onFinishClick(){
     const t = await (window.getIdTokenAsync ? window.getIdTokenAsync() : null);
 
     // 評価を実行
+    // v4.31: 実施したバイタル項目と身体診察項目の情報を送信
     const finishResp = await fetch(`/api/sessions/${currentSessionId}/finish`, {
       method:"POST",
       headers:{ "Content-Type":"application/json", Authorization:"Bearer " + t },
       body: JSON.stringify({
         vitalChecked: vitalChecked,
-        examChecked: examChecked
+        examChecked: examChecked,
+        vitalItemsDone: Array.from(vitalItemsShown),
+        examItemsDone: Array.from(examItemsShown)
       })
     });
 
@@ -3754,25 +3766,294 @@ function generateVitalsFromExpected(expectedVitals, customVitals) {
 }
 
 // Version 3.42: 患者の想定バイタル異常に基づいてバイタル・身体診察データを初期化
-function initializeVitalAndExamData(expectedVitals, customVitals) {
+// v4.31: expectedExamsを追加して身体診察の正常/異常を患者設定に基づいて生成
+function initializeVitalAndExamData(expectedVitals, customVitals, expectedExams) {
   // Version 3.44: デバッグログ追加
   console.log('[initializeVitalAndExamData] Received expectedVitals:', expectedVitals);
   console.log('[initializeVitalAndExamData] Received customVitals:', customVitals);
+  console.log('[initializeVitalAndExamData] Received expectedExams:', expectedExams);
   
   // バイタルサインを患者の設定に基づいて生成
   currentVitalData = generateVitalsFromExpected(expectedVitals, customVitals);
   
-  // 身体診察データ: examPatternsからランダムに選択
-  const examType = Math.random() < 0.5 ? 'normal' : 'abnormal';
-  const availableScenarios = Object.keys(examPatterns);
-  const randomScenario = availableScenarios[Math.floor(Math.random() * availableScenarios.length)];
-  currentExamData = examPatterns[randomScenario]?.[examType] || examPatterns.chest.normal;
+  // v4.31: 身体診察データを患者設定に基づいて生成
+  currentExamData = generateExamFromExpected(expectedExams);
 
   vitalChecked = false;
   examChecked = false;
 }
 
-// 個別項目を浮遊パネルとして表示（体温の帯だけを画面に直接表示）
+// v4.31: 患者設定に基づいて身体診察データを生成
+function generateExamFromExpected(expectedExams) {
+  const examData = {
+    inspection: {
+      label: '視診',
+      value: '正常',
+      abnormal: false
+    },
+    palpation: {
+      label: '触診',
+      value: '正常',
+      abnormal: false
+    },
+    auscultation: {
+      label: '聴診',
+      value: '正常',
+      abnormal: false
+    },
+    percussion: {
+      label: '打診',
+      value: '正常',
+      abnormal: false
+    }
+  };
+
+  if (expectedExams) {
+    if (expectedExams.inspection) {
+      examData.inspection = { label: '視診', value: '異常所見あり', abnormal: true };
+    }
+    if (expectedExams.palpation) {
+      examData.palpation = { label: '触診', value: '異常所見あり', abnormal: true };
+    }
+    if (expectedExams.auscultation) {
+      examData.auscultation = { label: '聴診', value: '異常所見あり', abnormal: true };
+    }
+    if (expectedExams.percussion) {
+      examData.percussion = { label: '打診', value: '異常所見あり', abnormal: true };
+    }
+  }
+
+  console.log('[generateExamFromExpected] Generated exam data:', examData);
+  return examData;
+}
+
+// v4.31: 確認モーダル関連の関数
+const VITAL_LABELS = {
+  temperature: '体温',
+  bloodPressure: '血圧',
+  pulse: '脈拍',
+  respiration: '呼吸数',
+  spo2: '酸素飽和度（SpO2）'
+};
+
+const EXAM_LABELS = {
+  inspection: '視診',
+  palpation: '触診',
+  auscultation: '聴診',
+  percussion: '打診'
+};
+
+// 確認モーダルを表示（キューに追加して順番に処理）
+function showConfirmModal(type, item) {
+  const existingInQueue = confirmModalQueue.find(q => q.type === type && q.item === item);
+  if (existingInQueue) {
+    console.log('[ConfirmModal] Already in queue:', type, item);
+    return;
+  }
+  
+  // 既に表示済みの項目はスキップ
+  if (type === 'vital' && vitalItemsShown.has(item)) {
+    console.log('[ConfirmModal] Vital item already shown:', item);
+    return;
+  }
+  if (type === 'exam' && examItemsShown.has(item)) {
+    console.log('[ConfirmModal] Exam item already shown:', item);
+    return;
+  }
+  
+  confirmModalQueue.push({ type, item });
+  console.log('[ConfirmModal] Added to queue:', type, item, 'Queue length:', confirmModalQueue.length);
+  
+  if (!isConfirmModalOpen) {
+    processNextConfirmModal();
+  }
+}
+
+// キューの次の項目を処理
+function processNextConfirmModal() {
+  if (confirmModalQueue.length === 0) {
+    isConfirmModalOpen = false;
+    return;
+  }
+  
+  const { type, item } = confirmModalQueue.shift();
+  isConfirmModalOpen = true;
+  
+  const modal = document.getElementById('confirmModal');
+  const title = document.getElementById('confirmModalTitle');
+  const yesBtn = document.getElementById('confirmYes');
+  const noBtn = document.getElementById('confirmNo');
+  
+  if (!modal || !title) {
+    console.error('[ConfirmModal] Modal elements not found');
+    isConfirmModalOpen = false;
+    processNextConfirmModal();
+    return;
+  }
+  
+  // 項目名を取得
+  let itemName = '';
+  if (type === 'vital') {
+    itemName = VITAL_LABELS[item] || item;
+    // カスタムバイタルの場合
+    if (currentVitalData && currentVitalData[item] && currentVitalData[item].label) {
+      itemName = currentVitalData[item].label;
+    }
+  } else if (type === 'exam') {
+    itemName = EXAM_LABELS[item] || item;
+    if (currentExamData && currentExamData[item] && currentExamData[item].label) {
+      itemName = currentExamData[item].label;
+    }
+  }
+  
+  title.textContent = `${itemName}を実施しますか？`;
+  
+  // 既存のイベントリスナーを削除（クローンで置き換え）
+  const newYesBtn = yesBtn.cloneNode(true);
+  const newNoBtn = noBtn.cloneNode(true);
+  yesBtn.parentNode.replaceChild(newYesBtn, yesBtn);
+  noBtn.parentNode.replaceChild(newNoBtn, noBtn);
+  
+  // 新しいイベントリスナーを追加
+  newYesBtn.addEventListener('click', () => {
+    console.log('[ConfirmModal] Confirmed:', type, item);
+    modal.classList.remove('visible');
+    
+    if (type === 'vital') {
+      displayVitalResult(item);
+    } else if (type === 'exam') {
+      displayExamResult(item);
+    }
+    
+    // 次の確認モーダルを処理
+    setTimeout(() => processNextConfirmModal(), 300);
+  });
+  
+  newNoBtn.addEventListener('click', () => {
+    console.log('[ConfirmModal] Cancelled:', type, item);
+    modal.classList.remove('visible');
+    
+    // 次の確認モーダルを処理
+    setTimeout(() => processNextConfirmModal(), 300);
+  });
+  
+  modal.classList.add('visible');
+}
+
+// バイタル測定結果を表示
+function displayVitalResult(item) {
+  if (!currentVitalData || vitalItemsShown.has(item)) return;
+  
+  vitalItemsShown.add(item);
+  
+  const container = document.getElementById('floatingPanels');
+  if (!container) return;
+  
+  container.style.display = 'flex';
+  container.style.zIndex = '140';
+  container.style.pointerEvents = 'auto';
+  
+  const data = currentVitalData[item];
+  let label = VITAL_LABELS[item];
+  if (!label && data && data.custom && data.label) {
+    label = data.label;
+  }
+  
+  if (data && label) {
+    const statusClass = data.abnormal ? 'abnormal' : 'normal';
+    
+    const stripDiv = document.createElement('div');
+    stripDiv.className = 'floating-panel';
+    stripDiv.setAttribute('data-vital-item', item);
+    stripDiv.style.cssText = `
+      background: #374151 !important;
+      border: none !important;
+      border-radius: 8px !important;
+      padding: 10px 16px !important;
+      font-size: 14px !important;
+      font-weight: 600 !important;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+      white-space: nowrap !important;
+      display: flex !important;
+      gap: 8px !important;
+    `;
+    
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = label;
+    labelSpan.style.color = '#ffffff';
+    
+    const valueSpan = document.createElement('span');
+    valueSpan.textContent = data.value;
+    valueSpan.style.color = statusClass === 'abnormal' ? '#fc8181' : '#ffffff';
+    
+    stripDiv.appendChild(labelSpan);
+    stripDiv.appendChild(valueSpan);
+    container.appendChild(stripDiv);
+    
+    console.log('[displayVitalResult] Displayed:', item, data.value);
+  }
+  
+  // 1項目でも実施したらvitalCheckedをtrue
+  vitalChecked = true;
+  console.log('[displayVitalResult] vitalChecked set to true');
+}
+
+// 身体診察結果を表示（正常/異常）
+function displayExamResult(item) {
+  if (!currentExamData || examItemsShown.has(item)) return;
+  
+  examItemsShown.add(item);
+  
+  const container = document.getElementById('floatingPanels');
+  if (!container) return;
+  
+  container.style.display = 'flex';
+  container.style.zIndex = '140';
+  container.style.pointerEvents = 'auto';
+  
+  const data = currentExamData[item];
+  if (data) {
+    const isAbnormal = data.abnormal;
+    const resultText = isAbnormal ? '異常所見あり' : '正常';
+    
+    const stripDiv = document.createElement('div');
+    stripDiv.className = 'floating-panel exam';
+    stripDiv.setAttribute('data-exam-item', item);
+    stripDiv.style.cssText = `
+      background: #374151 !important;
+      border: none !important;
+      border-radius: 8px !important;
+      padding: 10px 16px !important;
+      font-size: 14px !important;
+      font-weight: 600 !important;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+      white-space: nowrap !important;
+      display: flex !important;
+      gap: 8px !important;
+    `;
+    
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = data.label || EXAM_LABELS[item] || item;
+    labelSpan.style.color = '#ffffff';
+    
+    const valueSpan = document.createElement('span');
+    valueSpan.textContent = resultText;
+    valueSpan.style.color = isAbnormal ? '#fc8181' : '#68d391';
+    
+    stripDiv.appendChild(labelSpan);
+    stripDiv.appendChild(valueSpan);
+    container.appendChild(stripDiv);
+    
+    console.log('[displayExamResult] Displayed:', item, resultText);
+  }
+  
+  // 1項目でも実施したらexamCheckedをtrue
+  examChecked = true;
+  console.log('[displayExamResult] examChecked set to true');
+}
+
+// 個別項目を浮遊パネルとして表示
+// v4.31: 確認ボタン方式に変更 - キーワード検出後に確認モーダルを表示
 function showVitalModal(itemsToShow = []) {
   console.log('[showVitalModal] Called with items:', itemsToShow);
   console.log('[showVitalModal] currentVitalData:', currentVitalData);
@@ -3782,156 +4063,30 @@ function showVitalModal(itemsToShow = []) {
     return;
   }
 
-  const container = document.getElementById('floatingPanels');
-  console.log('[showVitalModal] Container:', container);
-  if (!container) {
-    console.log('[showVitalModal] Container not found');
-    return;
-  }
-  
-  // Version 3.38: コンテナのインラインスタイルを明示的に設定して表示
-  container.style.display = 'flex';
-  container.style.zIndex = '140';
-  container.style.pointerEvents = 'auto';
-  console.log('[showVitalModal] Container display set to flex');
-
-  const vitalLabels = {
-    temperature: '体温',
-    bloodPressure: '血圧',
-    pulse: '脈拍',
-    respiration: '呼吸数',
-    spo2: '酸素飽和度'
-  };
-
-  // 新しい項目のみを追加表示（既に表示済みの項目は追加しない）
+  // v4.31: 各項目について確認モーダルを表示
   itemsToShow.forEach(item => {
     if (!vitalItemsShown.has(item)) {
-      vitalItemsShown.add(item);
-      
-      const data = currentVitalData[item];
-      // Version 3.45: カスタム項目の場合、data.labelを使用
-      let label = vitalLabels[item];
-      if (!label && data && data.custom && data.label) {
-        label = data.label;
-      }
-      
-      if (data && label) {
-        const statusClass = data.abnormal ? 'abnormal' : 'normal';
-        
-        // ステータスボタンと同じスタイルで表示（ラベルと値を分離）
-        const stripDiv = document.createElement('div');
-        stripDiv.className = 'floating-panel';
-        stripDiv.setAttribute('data-vital-item', item);
-        stripDiv.style.cssText = `
-          background: #374151 !important;
-          border: none !important;
-          border-left: none !important;
-          border-right: none !important;
-          border-top: none !important;
-          border-bottom: none !important;
-          border-radius: 8px !important;
-          padding: 10px 16px !important;
-          font-size: 14px !important;
-          font-weight: 600 !important;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-          white-space: nowrap !important;
-          display: flex !important;
-          gap: 8px !important;
-        `;
-        
-        // ラベル（白）と値（正常=白、異常=赤）を別々に表示
-        const labelSpan = document.createElement('span');
-        labelSpan.textContent = label;
-        labelSpan.style.color = '#ffffff';
-        
-        const valueSpan = document.createElement('span');
-        valueSpan.textContent = data.value;
-        valueSpan.style.color = statusClass === 'abnormal' ? '#fc8181' : '#ffffff';
-        
-        stripDiv.appendChild(labelSpan);
-        stripDiv.appendChild(valueSpan);
-        container.appendChild(stripDiv);
-      }
+      showConfirmModal('vital', item);
     }
   });
-
-  // 全項目が表示済みかチェック
-  const allItems = ['temperature', 'bloodPressure', 'pulse', 'respiration', 'spo2'];
-  const allShown = allItems.every(item => vitalItemsShown.has(item));
-  
-  if (allShown) {
-    vitalChecked = true;
-  }
-
 }
 
-// 個別項目を浮遊パネルとして表示（聴診の帯だけを画面に直接表示）
+// 個別項目を浮遊パネルとして表示
+// v4.31: 確認ボタン方式に変更 - キーワード検出後に確認モーダルを表示
 function showExamModal(itemsToShow = []) {
-  if (!currentExamData) return;
-
-  const container = document.getElementById('floatingPanels');
-  if (!container) return;
+  console.log('[showExamModal] Called with items:', itemsToShow);
   
-  // Version 3.38: コンテナのインラインスタイルを明示的に設定して表示
-  container.style.display = 'flex';
-  container.style.zIndex = '140';
-  container.style.pointerEvents = 'auto';
-  console.log('[showExamModal] Container display set to flex');
-
-  // 新しい項目のみを追加表示（既に表示済みの項目は追加しない）
-  itemsToShow.forEach(item => {
-    if (!examItemsShown.has(item)) {
-      examItemsShown.add(item);
-      
-      const data = currentExamData[item];
-      if (data) {
-        const statusClass = data.abnormal ? 'abnormal' : 'normal';
-        
-        // ステータスボタンと同じスタイルで表示（ラベルと値を分離）
-        const stripDiv = document.createElement('div');
-        stripDiv.className = 'floating-panel';
-        stripDiv.setAttribute('data-exam-item', item);
-        stripDiv.style.cssText = `
-          background: #374151 !important;
-          border: none !important;
-          border-left: none !important;
-          border-right: none !important;
-          border-top: none !important;
-          border-bottom: none !important;
-          border-radius: 8px !important;
-          padding: 10px 16px !important;
-          font-size: 14px !important;
-          font-weight: 600 !important;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-          white-space: nowrap !important;
-          display: flex !important;
-          gap: 8px !important;
-        `;
-        
-        // ラベル（白）と値（正常=白、異常=赤）を別々に表示
-        const labelSpan = document.createElement('span');
-        labelSpan.textContent = data.label;
-        labelSpan.style.color = '#ffffff';
-        
-        const valueSpan = document.createElement('span');
-        valueSpan.textContent = data.value;
-        valueSpan.style.color = statusClass === 'abnormal' ? '#fc8181' : '#ffffff';
-        
-        stripDiv.appendChild(labelSpan);
-        stripDiv.appendChild(valueSpan);
-        container.appendChild(stripDiv);
-      }
-    }
-  });
-
-  // 全項目が表示済みかチェック
-  const allItems = Object.keys(currentExamData);
-  const allShown = allItems.every(item => examItemsShown.has(item));
-  
-  if (allShown) {
-    examChecked = true;
+  if (!currentExamData) {
+    console.log('[showExamModal] No exam data available');
+    return;
   }
 
+  // v4.31: 各項目について確認モーダルを表示
+  itemsToShow.forEach(item => {
+    if (!examItemsShown.has(item)) {
+      showConfirmModal('exam', item);
+    }
+  });
 }
 
 // 個別項目のキーワードをチェックし、該当する項目名の配列を返す

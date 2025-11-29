@@ -477,7 +477,10 @@ app.post("/api/sessions/:id/finish", requireAuth, async (req, res) => {
   try {
     if (!dbReady) return res.status(503).json({ error: "db not ready" });
     const { id } = req.params;
-    const { vitalChecked, examChecked } = req.body || {};
+    // v4.31: 実施したバイタル項目と身体診察項目の情報を受け取る
+    const { vitalChecked, examChecked, vitalItemsDone, examItemsDone } = req.body || {};
+    console.log(`[finish] vitalChecked:`, vitalChecked, `examChecked:`, examChecked);
+    console.log(`[finish] vitalItemsDone:`, vitalItemsDone, `examItemsDone:`, examItemsDone);
     const sRef  = db.collection("sessions").doc(id);
     const sSnap = await sRef.get();
     if (!sSnap.exists) return res.status(404).json({ error: "not found" });
@@ -639,14 +642,37 @@ ${improvementsExtraRule}
         const itemName = String(x?.name || allItemNames[i] || `項目${i+1}`);
 
         // バイタル/現症（インデックス6）はシステム判定で上書き
+        // v4.31: 実施した項目を具体的に列挙
         if (i === 6) {
           score = vitalChecked ? 2 : 0;
-          comment = vitalChecked ? 'バイタルサイン測定を実施しました（体温、血圧、脈拍などを確認）' : 'バイタルサイン測定を実施していません。体温・血圧・脈拍等の測定が必要です';
+          if (vitalChecked && Array.isArray(vitalItemsDone) && vitalItemsDone.length > 0) {
+            const vitalLabels = {
+              temperature: '体温', bloodPressure: '血圧', pulse: '脈拍',
+              respiration: '呼吸数', spo2: '酸素飽和度'
+            };
+            const doneNames = vitalItemsDone.map(v => vitalLabels[v] || v).join('、');
+            comment = `バイタルサイン測定を実施しました（${doneNames}を確認）`;
+          } else if (vitalChecked) {
+            comment = 'バイタルサイン測定を実施しました';
+          } else {
+            comment = 'バイタルサイン測定を実施していません。体温・血圧・脈拍等の測定が必要です';
+          }
         }
         // 身体診察（インデックス7）はシステム判定で上書き
+        // v4.31: 実施した項目を具体的に列挙
         if (i === 7) {
           score = examChecked ? 2 : 0;
-          comment = examChecked ? '身体診察を実施しました（視診、触診、聴診などを実施）' : '身体診察を実施していません。視診・触診・聴診などが必要です';
+          if (examChecked && Array.isArray(examItemsDone) && examItemsDone.length > 0) {
+            const examLabels = {
+              inspection: '視診', palpation: '触診', auscultation: '聴診', percussion: '打診'
+            };
+            const doneNames = examItemsDone.map(e => examLabels[e] || e).join('、');
+            comment = `身体診察を実施しました（${doneNames}を実施）`;
+          } else if (examChecked) {
+            comment = '身体診察を実施しました';
+          } else {
+            comment = '身体診察を実施していません。視診・触診・聴診などが必要です';
+          }
         }
 
         return {

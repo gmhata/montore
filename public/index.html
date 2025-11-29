@@ -489,6 +489,77 @@
         opacity: 1;
       }
     }
+    
+    /* バイタル/身体診察 確認モーダル */
+    #confirmModal{
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 200;
+    }
+    #confirmModal.visible{
+      display: flex;
+    }
+    .confirm-modal-content{
+      background: #2d3748;
+      border-radius: 12px;
+      padding: 24px;
+      min-width: 320px;
+      max-width: 90%;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      animation: modalSlideIn 0.2s ease-out;
+    }
+    @keyframes modalSlideIn{
+      from{
+        transform: scale(0.9) translateY(-20px);
+        opacity: 0;
+      }
+      to{
+        transform: scale(1) translateY(0);
+        opacity: 1;
+      }
+    }
+    .confirm-modal-title{
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .confirm-modal-buttons{
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+    .confirm-modal-btn{
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s ease;
+    }
+    .confirm-modal-btn.confirm{
+      background: #48bb78;
+      color: #fff;
+    }
+    .confirm-modal-btn.confirm:hover{
+      background: #38a169;
+    }
+    .confirm-modal-btn.cancel{
+      background: #4a5568;
+      color: #fff;
+    }
+    .confirm-modal-btn.cancel:hover{
+      background: #718096;
+    }
   </style>
 </head>
 <body>
@@ -509,7 +580,7 @@
           <button id="btnLogout" class="secondary" style="display:none">ログアウト</button>
         </div>
       </div>
-      <div class="version-badge">version: 4.30</div>
+      <div class="version-badge">version: 4.31</div>
     </section>
 
     <!-- トップ -->
@@ -554,7 +625,7 @@
           </div>
         </div>
       </div>
-      <div class="version-badge">version: 4.30</div>
+      <div class="version-badge">version: 4.31</div>
     </section>
 
     <!-- 対話 -->
@@ -937,7 +1008,7 @@
   <script src="/firebase-config.js?v=4.11" onerror="console.warn('firebase-config.js not found, using placeholder')"></script>
   
   <script type="module" src="/auth.js?v=4.11"></script>
-  <script type="module" src="/practice.js?v=4.28"></script>
+  <script type="module" src="/practice.js?v=4.31"></script>
   <script type="module" src="/admin.js?v=4.25"></script>
 
   <script>
@@ -1399,6 +1470,17 @@
 
   <!-- 個別表示用の浮遊パネルコンテナ -->
   <div id="floatingPanels"></div>
+  
+  <!-- バイタル/身体診察 確認モーダル -->
+  <div id="confirmModal">
+    <div class="confirm-modal-content">
+      <div class="confirm-modal-title" id="confirmModalTitle">体温測定を実施しますか？</div>
+      <div class="confirm-modal-buttons">
+        <button class="confirm-modal-btn confirm" id="confirmYes">実施する</button>
+        <button class="confirm-modal-btn cancel" id="confirmNo">実施しない</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 統合ステータスパネル -->
   <button id="toggleStatusBtn" class="toggle-status-btn" style="display:none">ステータス</button>

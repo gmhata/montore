@@ -2392,6 +2392,36 @@ async function mountPatientCreationPane() {
           <div id="pcCustomVitalsArea" style="margin-top:12px"></div>
         </div>
 
+        <!-- v4.31: 身体診察の正常/異常設定 -->
+        <div style="margin-top:24px; padding:20px; background:#f0fdf4; border-radius:10px; border:2px solid #22c55e">
+          <h4 style="margin:0 0 8px; display:flex; align-items:center; gap:8px">
+            <span style="font-size:20px">🩺</span>
+            身体診察の所見設定
+          </h4>
+          <div class="muted small" style="margin-bottom:16px; color:#166534">
+            各身体診察で異常所見がある場合はチェックしてください。チェックなし＝正常、チェックあり＝異常所見あり として表示されます。
+          </div>
+          
+          <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:10px; background:white; border:1px solid #d1d5db; border-radius:6px; transition:all 0.2s">
+              <input type="checkbox" id="pcExam_inspection" class="exam-checkbox" style="width:18px; height:18px; cursor:pointer">
+              <span style="font-weight:600">👁️ 視診に異常所見あり</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:10px; background:white; border:1px solid #d1d5db; border-radius:6px">
+              <input type="checkbox" id="pcExam_palpation" class="exam-checkbox" style="width:18px; height:18px; cursor:pointer">
+              <span style="font-weight:600">🖐️ 触診に異常所見あり</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:10px; background:white; border:1px solid #d1d5db; border-radius:6px">
+              <input type="checkbox" id="pcExam_auscultation" class="exam-checkbox" style="width:18px; height:18px; cursor:pointer">
+              <span style="font-weight:600">🫀 聴診に異常所見あり</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; padding:10px; background:white; border:1px solid #d1d5db; border-radius:6px">
+              <input type="checkbox" id="pcExam_percussion" class="exam-checkbox" style="width:18px; height:18px; cursor:pointer">
+              <span style="font-weight:600">🔔 打診に異常所見あり</span>
+            </label>
+          </div>
+        </div>
+
         <div style="margin-top:24px; padding-top:20px; border-top:2px solid #e5e7eb">
           <button id="pcSaveBtn" class="primary" style="padding:12px 32px; font-size:16px; font-weight:600">
             患者を保存
@@ -2724,6 +2754,14 @@ async function saveAdminPatient() {
     hypoxia: !!$("pcVital_hypoxia")?.checked
   };
 
+  // v4.31: 身体診察の異常所見を収集
+  const expectedExams = {
+    inspection: !!$("pcExam_inspection")?.checked,
+    palpation: !!$("pcExam_palpation")?.checked,
+    auscultation: !!$("pcExam_auscultation")?.checked,
+    percussion: !!$("pcExam_percussion")?.checked
+  };
+
   // Version 3.46: カスタムバイタル項目を収集（デバッグログ追加）
   const customVitals = [];
   const customCheckboxes = document.querySelectorAll('.custom-vital');
@@ -2790,6 +2828,7 @@ async function saveAdminPatient() {
         symptomKeywords,
         timeLimit,
         expectedVitals,
+        expectedExams,
         customVitals,
         isAdminCreated: true,
         isPublic: true
@@ -3157,6 +3196,20 @@ async function editAdminPatient(patientId, patientsList) {
     if ($("pcVital_hypoxia")) $("pcVital_hypoxia").checked = !!patient.expectedVitals.hypoxia;
   }
 
+  // v4.31: 身体診察の異常所見をフォームに設定
+  if (patient.expectedExams) {
+    if ($("pcExam_inspection")) $("pcExam_inspection").checked = !!patient.expectedExams.inspection;
+    if ($("pcExam_palpation")) $("pcExam_palpation").checked = !!patient.expectedExams.palpation;
+    if ($("pcExam_auscultation")) $("pcExam_auscultation").checked = !!patient.expectedExams.auscultation;
+    if ($("pcExam_percussion")) $("pcExam_percussion").checked = !!patient.expectedExams.percussion;
+  } else {
+    // 設定がない場合はチェックを外す
+    if ($("pcExam_inspection")) $("pcExam_inspection").checked = false;
+    if ($("pcExam_palpation")) $("pcExam_palpation").checked = false;
+    if ($("pcExam_auscultation")) $("pcExam_auscultation").checked = false;
+    if ($("pcExam_percussion")) $("pcExam_percussion").checked = false;
+  }
+
   // Version 3.45: カスタムバイタル項目をフォームに復元
   // Version 3.46: デバッグログ追加
   console.log('[editAdminPatient] Patient data:', patient);
@@ -3240,6 +3293,14 @@ async function updateAdminPatient(patientId) {
     hypoxia: !!$("pcVital_hypoxia")?.checked
   };
 
+  // v4.31: 身体診察の異常所見を収集
+  const expectedExams = {
+    inspection: !!$("pcExam_inspection")?.checked,
+    palpation: !!$("pcExam_palpation")?.checked,
+    auscultation: !!$("pcExam_auscultation")?.checked,
+    percussion: !!$("pcExam_percussion")?.checked
+  };
+
   // Version 3.46: カスタムバイタル項目を収集（デバッグログ追加）
   const customVitals = [];
   const customCheckboxes = document.querySelectorAll('.custom-vital');
@@ -3306,6 +3367,7 @@ async function updateAdminPatient(patientId) {
         symptomKeywords,
         timeLimit,
         expectedVitals,
+        expectedExams,
         customVitals
       })
     });
