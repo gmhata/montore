@@ -107,6 +107,20 @@ let examItemsShown = new Set(); // 表示済み身体診察項目 ('inspection',
 let statusPanelAutoCloseTimer = null;
 let statusPanelShownOnce = false; // 症状別モードで初回パネル表示を管理
 
+/* 評価項目選択（v4.25） */
+const EVALUATION_ITEMS = [
+  { id: "intro", name: "導入", description: "挨拶・自己紹介・確認" },
+  { id: "chief", name: "主訴", description: "主な症状の聴取" },
+  { id: "opqrst", name: "OPQRST", description: "症状の詳細確認" },
+  { id: "ros", name: "ROS&RedFlag", description: "系統的レビュー・危険兆候" },
+  { id: "history", name: "医療・生活歴", description: "既往歴・生活習慣" },
+  { id: "reason", name: "受診契機", description: "来院理由の確認" },
+  { id: "vitals", name: "バイタル/現症", description: "バイタル測定" },
+  { id: "exam", name: "身体診察", description: "視診・触診・聴診" },
+  { id: "progress", name: "進行", description: "対話の進行・まとめ" }
+];
+let selectedEvalItems = new Set(EVALUATION_ITEMS.map(item => item.id)); // デフォルトで全項目選択
+
 /* Vital Signs Data Patterns */
 const vitalPatterns = {
   chest: {
@@ -1231,6 +1245,17 @@ function selectPatient(patientId){
     const hasDisplayProfile = p.displayProfile && p.displayProfile.trim() !== "";
     console.log('[selectPatient] Patient:', p.name, 'displayProfile:', p.displayProfile, 'hasDisplayProfile:', hasDisplayProfile);
     
+    // Version 4.25: 評価項目チェックボックスを生成
+    const evalCheckboxesHtml = EVALUATION_ITEMS.map(item => `
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0">
+        <input type="checkbox" class="eval-item-checkbox" data-item-id="${item.id}" 
+               ${selectedEvalItems.has(item.id) ? 'checked' : ''}
+               style="width:16px;height:16px;cursor:pointer">
+        <span style="font-weight:500">${item.name}</span>
+        <span style="color:#6b7280;font-size:12px">(${item.description})</span>
+      </label>
+    `).join('');
+    
     detailEl.innerHTML = `
       <div class="section">
         <div class="section-title">基本情報</div>
@@ -1244,7 +1269,38 @@ function selectPatient(patientId){
         <div class="section-title">学生提示用プロフィール</div>
         <div class="section-content">${hasDisplayProfile ? esc(p.displayProfile) : '<span style="color:#e74c3c; font-weight:500">⚠️ 未設定です。管理画面の「患者管理」から該当患者を編集し、「表示用患者プロフィール（学生向け）」を設定してください。</span>'}</div>
       </div>
+      <div class="section">
+        <div class="section-title">📋 評価項目の選択</div>
+        <div class="section-content" style="background:#f0fdf4;border:1px solid #86efac">
+          <div style="margin-bottom:8px;color:#166534;font-size:13px">
+            ✅ 対話後に評価する項目を選択してください（1年生はコミュニケーション項目のみなど）
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px">
+            ${evalCheckboxesHtml}
+          </div>
+          <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end">
+            <button type="button" onclick="selectAllEvalItems()" class="secondary" style="font-size:12px;padding:4px 10px">全選択</button>
+            <button type="button" onclick="deselectAllEvalItems()" class="secondary" style="font-size:12px;padding:4px 10px">全解除</button>
+          </div>
+          <div style="margin-top:8px;font-size:12px;color:#374151">
+            選択中: <strong id="selectedEvalCount">${selectedEvalItems.size}</strong> 項目（満点: <strong id="maxScore">${selectedEvalItems.size * 3}</strong>点）
+          </div>
+        </div>
+      </div>
     `;
+    
+    // チェックボックスのイベントリスナーを追加
+    detailEl.querySelectorAll('.eval-item-checkbox').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const itemId = e.target.dataset.itemId;
+        if (e.target.checked) {
+          selectedEvalItems.add(itemId);
+        } else {
+          selectedEvalItems.delete(itemId);
+        }
+        updateEvalItemsDisplay();
+      });
+    });
   }
   
   // ボタンと対話オプションを表示
@@ -1261,6 +1317,28 @@ function selectPatient(patientId){
     console.log('[displayPatientDetail] Start button enabled and displayed');
   }
   if (optionsArea) optionsArea.style.display = "";
+}
+
+/* 評価項目の全選択 */
+function selectAllEvalItems() {
+  selectedEvalItems = new Set(EVALUATION_ITEMS.map(item => item.id));
+  document.querySelectorAll('.eval-item-checkbox').forEach(cb => cb.checked = true);
+  updateEvalItemsDisplay();
+}
+
+/* 評価項目の全解除 */
+function deselectAllEvalItems() {
+  selectedEvalItems.clear();
+  document.querySelectorAll('.eval-item-checkbox').forEach(cb => cb.checked = false);
+  updateEvalItemsDisplay();
+}
+
+/* 評価項目選択状態の表示更新 */
+function updateEvalItemsDisplay() {
+  const countEl = $("selectedEvalCount");
+  const maxScoreEl = $("maxScore");
+  if (countEl) countEl.textContent = selectedEvalItems.size;
+  if (maxScoreEl) maxScoreEl.textContent = selectedEvalItems.size * 3;
 }
 
 /* 選択した患者情報をPDF出力 */
@@ -1412,12 +1490,18 @@ async function startWithSelectedPatient(){
 
   window.__VIDEO_SRC = videosForExam(p.patientNo);
   primeVideos();
+  
+  // Version 4.25: 選択された評価項目を取得
+  const selectedItems = Array.from(selectedEvalItems);
+  console.log('[startWithSelectedPatient] Selected evaluation items:', selectedItems);
+  
   await startTalk({
     mode:"test",
     showConversationText: showConversationText,
     patient:{ id:p.id, no:p.patientNo, name:p.name, expectedVitals:p.expectedVitals, customVitals:p.customVitals },
     persona:{ name:p.name, ageBand:p.ageBand, gender:p.gender, language:p.language, brokenJapanese:brokenJapanese, profileSeed:p.profile },
-    timeLimit: p.timeLimit || 180
+    timeLimit: p.timeLimit || 180,
+    selectedEvalItems: selectedItems  // Version 4.25: 評価項目選択
   });
 }
 
@@ -1528,6 +1612,11 @@ async function startTalk(cfg){
 
     // セッション作成（DB）
     currentSessionId = null;
+    
+    // Version 4.25: 選択された評価項目をグローバルで保持
+    window.__currentSelectedEvalItems = cfg.selectedEvalItems || EVALUATION_ITEMS.map(item => item.id);
+    console.log('[startTalk] Selected eval items for session:', window.__currentSelectedEvalItems);
+    
     try{
       const sr = await fetch("/api/sessions/start", {
         method:"POST",
@@ -1542,7 +1631,8 @@ async function startTalk(cfg){
             gender:  effGender,
             language:effLang,
             profileSeed: cfg.persona?.profileSeed || cfg.profile || ""
-          }
+          },
+          selectedEvalItems: window.__currentSelectedEvalItems  // Version 4.25: 評価項目
         })
       });
       const sj = await sr.json().catch(()=>({}));
@@ -2163,6 +2253,12 @@ async function onFinishClick(){
       throw new Error(`セッション取得エラー: ${det.statusText || det.status}`);
     }
     const dj  = await det.json().catch(()=>({}));
+
+    // Version 4.25: サーバーからの評価項目情報で上書き（履歴閲覧時も正確に表示するため）
+    if (dj.selectedEvalItems && Array.isArray(dj.selectedEvalItems)) {
+      window.__currentSelectedEvalItems = dj.selectedEvalItems;
+      console.log('[onFinishClick] Loaded selectedEvalItems from server:', dj.selectedEvalItems);
+    }
 
     $("rsOut") && ($("rsOut").innerHTML = renderReportHTML(dj?.analysis||dj?.session?.analysis||null));
     $("rsLog") && ($("rsLog").innerHTML = renderConversationLog(Array.isArray(dj.messages)?dj.messages:[]));
@@ -3036,24 +3132,63 @@ function renderReportHTML(analysis){
     return `<div class="muted">採点結果はまだありません。</div>`;
   }
 
+  // Version 4.25: 選択された評価項目を取得
+  const selectedItems = window.__currentSelectedEvalItems || EVALUATION_ITEMS.map(item => item.id);
+  const selectedItemNames = selectedItems.map(id => {
+    const item = EVALUATION_ITEMS.find(e => e.id === id);
+    return item ? item.name : null;
+  }).filter(Boolean);
+  console.log('[renderReportHTML] Selected eval items:', selectedItems, 'Names:', selectedItemNames);
+
   let html = "";
 
   if (rows.length){
-    const max = rows.length * 2;
-    const total = rows.reduce((s,r)=> s + Math.max(0, Math.min(2, Number(r?.score||0))), 0);
+    // Version 4.25: 選択された項目のみをスコア計算対象とする
+    const selectedRows = rows.map(x => {
+      const isSelected = selectedItemNames.includes(x?.name);
+      return { ...x, isSelected };
+    });
+    
+    const evaluatedRows = selectedRows.filter(r => r.isSelected);
+    const max = evaluatedRows.length * 2;  // 選択項目数 × 2点
+    const total = evaluatedRows.reduce((s,r)=> s + Math.max(0, Math.min(2, Number(r?.score||0))), 0);
     const score100 = max ? Math.round((total/max)*100) : 0;
+    
     const head = `<tr><th style="width:48px">#</th><th style="width:180px">評価軸</th><th style="width:56px">点</th><th>コメント</th></tr>`;
-    const body = rows.map((x,i)=>`
-      <tr>
-        <td style="text-align:center">${i+1}</td>
-        <td>${esc(x?.name||"")}</td>
-        <td style="text-align:center">${Number(x?.score)||0}</td>
-        <td>${esc(x?.comment||"")}</td>
-      </tr>
-    `).join("");
+    const body = rows.map((x,i)=>{
+      const isSelected = selectedItemNames.includes(x?.name);
+      if (isSelected) {
+        // 選択された項目: 通常表示
+        return `
+          <tr>
+            <td style="text-align:center">${i+1}</td>
+            <td>${esc(x?.name||"")}</td>
+            <td style="text-align:center">${Number(x?.score)||0}</td>
+            <td>${esc(x?.comment||"")}</td>
+          </tr>
+        `;
+      } else {
+        // 未選択項目: グレーアウトして「ー」表示
+        return `
+          <tr style="background:#f9fafb;color:#9ca3af">
+            <td style="text-align:center">${i+1}</td>
+            <td>${esc(x?.name||"")}</td>
+            <td style="text-align:center">ー</td>
+            <td style="font-style:italic">（評価対象外）</td>
+          </tr>
+        `;
+      }
+    }).join("");
+    
+    // Version 4.25: 選択項目数を表示
+    const itemCountInfo = selectedItems.length < EVALUATION_ITEMS.length 
+      ? `<div style="margin-top:4px;font-size:12px;color:#6b7280">評価対象: ${evaluatedRows.length}項目（満点: ${max}点 = ${evaluatedRows.length}項目 × 2点）</div>`
+      : '';
+    
     html += `
       <table class="tbl"><thead>${head}</thead><tbody>${body}</tbody></table>
       <div style="margin-top:8px">合計: <b>${total}</b> / ${max}（100点換算: <b>${score100}</b>）</div>
+      ${itemCountInfo}
     `;
   }
 
@@ -3067,7 +3202,12 @@ function renderReportHTML(analysis){
       </div>
     `;
   };
+  
+  // Version 4.25: 総評は常に表示
   html += seg("総評", summary);
+  
+  // Version 4.25: 良い点・改善点は選択項目に基づいてフィルタリング
+  // (サーバー側で生成されるため、ここではそのまま表示。将来的にはサーバー側でフィルタリングが必要)
   html += seg("良かった点（具体的アドバイス）", positives);
   html += seg("改善が必要な点（具体的アドバイス）", improvements);
   
@@ -3217,6 +3357,16 @@ async function showSessionDetail(sessionId){
     });
     const j = await r.json();
     if (!r.ok) throw new Error(j?.error || "取得失敗");
+    
+    // Version 4.25: サーバーからの評価項目情報で上書き
+    if (j.selectedEvalItems && Array.isArray(j.selectedEvalItems)) {
+      window.__currentSelectedEvalItems = j.selectedEvalItems;
+      console.log('[showSessionDetail] Loaded selectedEvalItems from server:', j.selectedEvalItems);
+    } else {
+      // 全項目選択（旧データとの互換性）
+      window.__currentSelectedEvalItems = EVALUATION_ITEMS.map(item => item.id);
+      console.log('[showSessionDetail] No selectedEvalItems, using all items');
+    }
     
     // 結果画面に表示
     $("rsSid") && ($("rsSid").textContent = sessionId);

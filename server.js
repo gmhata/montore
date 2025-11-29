@@ -482,9 +482,14 @@ app.post("/api/sessions/:id/finish", requireAuth, async (req, res) => {
     const sSnap = await sRef.get();
     if (!sSnap.exists) return res.status(404).json({ error: "not found" });
 
+    // Version 4.25: 選択された評価項目を取得
+    const sessionData = sSnap.data();
+    const selectedEvalItems = sessionData?.cfg?.selectedEvalItems || null;
+    console.log(`[finish] Selected eval items from session:`, selectedEvalItems);
+
     const msgsQ     = await sRef.collection("messages").orderBy("t").get();
     const messages  = msgsQ.docs.map((d) => d.data());
-    const firstT    = messages[0]?.t || sSnap.data().createdAt || Date.now();
+    const firstT    = messages[0]?.t || sessionData.createdAt || Date.now();
     const lastT     = messages[messages.length - 1]?.t || Date.now();
     const durationSec = Math.max(0, Math.round((lastT - firstT) / 1000));
 
@@ -587,10 +592,24 @@ positives / improvements の作成ルール:
   try {
     const j = await openaiChatJSON({ system, user, model: "gpt-4o-mini" });
     const rb = Array.isArray(j?.report?.rubric) ? j.report.rubric : [];
+    // Version 4.25: 評価項目IDと名前のマッピング
+    const evalItemIdToName = {
+      intro: "導入", chief: "主訴", opqrst: "OPQRST", ros: "ROS&RedFlag",
+      history: "医療・生活歴", reason: "受診契機", vitals: "バイタル/現症",
+      exam: "身体診察", progress: "進行"
+    };
+    const allItemNames = ["導入","主訴","OPQRST","ROS&RedFlag","医療・生活歴","受診契機","バイタル/現症","身体診察","進行"];
+    const selectedItemNames = selectedEvalItems 
+      ? selectedEvalItems.map(id => evalItemIdToName[id]).filter(Boolean)
+      : allItemNames;
+    
+    console.log(`[finish] Selected item names:`, selectedItemNames);
+    
     report = {
       rubric: rb.map((x, i) => {
         let score = Math.max(0, Math.min(2, Number(x?.score ?? 0)));
         let comment = String(x?.comment || "");
+        const itemName = String(x?.name || allItemNames[i] || `項目${i+1}`);
 
         // バイタル/現症（インデックス6）はシステム判定で上書き
         if (i === 6) {
@@ -604,7 +623,7 @@ positives / improvements の作成ルール:
         }
 
         return {
-          name: String(x?.name || ["導入","主訴","OPQRST","ROS&RedFlag","医療・生活歴","受診契機","バイタル/現症","身体診察","進行"][i] || `項目${i+1}`),
+          name: itemName,
           score,
           comment,
         };
@@ -613,6 +632,7 @@ positives / improvements の作成ルール:
       positives: Array.isArray(j?.report?.positives) ? j.report.positives.map(String) : [],
       improvements: Array.isArray(j?.report?.improvements) ? j.report.improvements.map(String) : [],
       durationSec,
+      selectedEvalItems: selectedEvalItems || null,  // Version 4.25: 選択項目を保存
     };
   } catch (err) {
     console.warn("[scoring] OpenAI failed:", err?.message || err);
@@ -637,7 +657,16 @@ app.get("/api/sessions/:id", requireAuth, async (req, res) => {
     if (!snap.exists) return res.status(404).json({ error: "not found" });
     const msgsQ = await sRef.collection("messages").orderBy("t").get();
     const messages = msgsQ.docs.map((d) => d.data());
-    res.json({ ok: true, session: snap.data(), messages, analysis: snap.data().analysis || null });
+    const sessionData = snap.data();
+    // Version 4.25: 選択された評価項目をレスポンスに含める
+    const selectedEvalItems = sessionData?.cfg?.selectedEvalItems || null;
+    res.json({ 
+      ok: true, 
+      session: sessionData, 
+      messages, 
+      analysis: sessionData.analysis || null,
+      selectedEvalItems  // Version 4.25
+    });
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) });
   }
