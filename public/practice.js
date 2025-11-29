@@ -4299,16 +4299,7 @@ async function loadPracticeAdvice() {
     
     let html = `<div style="font-size:13px; color:#4b5563; margin-bottom:8px;">過去${evaluatedSessions.length}回の練習から分析しました</div>`;
 
-    if (weakItems.length > 0) {
-      html += `<div style="background:#fff; border:1px solid #fce7f3; border-radius:8px; padding:12px; margin-bottom:12px;">`;
-      html += `<div style="font-weight:700; font-size:14px; color:#9f1239; margin-bottom:8px;">`;
-      html += `改善が必要な項目：</div>`;
-      html += `<ul style="margin:0; padding-left:20px; color:#374151;">`;
-      for (const item of weakItems.slice(0, 3)) {
-        html += `<li>${esc(item.name)}（平均スコア: ${item.avg.toFixed(1)}点）</li>`;
-      }
-      html += `</ul></div>`;
-    }
+    // v4.31: 「改善が必要な項目」セクションを削除（ユーザー要望）
 
     if (focusAreas.length > 0) {
       html += `<div style="background:#fff; border:1px solid #fce7f3; border-radius:8px; padding:12px;">`;
