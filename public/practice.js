@@ -1245,14 +1245,13 @@ function selectPatient(patientId){
     const hasDisplayProfile = p.displayProfile && p.displayProfile.trim() !== "";
     console.log('[selectPatient] Patient:', p.name, 'displayProfile:', p.displayProfile, 'hasDisplayProfile:', hasDisplayProfile);
     
-    // Version 4.25: 評価項目チェックボックスを生成
+    // Version 4.25: 評価項目チェックボックスを生成（コンパクト表示）
     const evalCheckboxesHtml = EVALUATION_ITEMS.map(item => `
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0">
+      <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:1px 0;font-size:13px">
         <input type="checkbox" class="eval-item-checkbox" data-item-id="${item.id}" 
                ${selectedEvalItems.has(item.id) ? 'checked' : ''}
-               style="width:16px;height:16px;cursor:pointer">
+               style="width:14px;height:14px;cursor:pointer">
         <span style="font-weight:500">${item.name}</span>
-        <span style="color:#6b7280;font-size:12px">(${item.description})</span>
       </label>
     `).join('');
     
@@ -1271,19 +1270,19 @@ function selectPatient(patientId){
       </div>
       <div class="section">
         <div class="section-title">📋 評価項目の選択</div>
-        <div class="section-content" style="background:#f0fdf4;border:1px solid #86efac">
-          <div style="margin-bottom:8px;color:#166534;font-size:13px">
-            ✅ 対話後に評価する項目を選択してください（1年生はコミュニケーション項目のみなど）
+        <div class="section-content" style="background:#f0fdf4;border:1px solid #86efac;padding:8px 12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:12px;color:#166534">対話後に評価する項目を選択</span>
+            <div style="display:flex;gap:6px">
+              <button type="button" id="btnSelectAllEval" class="secondary" style="font-size:11px;padding:2px 8px">全選択</button>
+              <button type="button" id="btnDeselectAllEval" class="secondary" style="font-size:11px;padding:2px 8px">全解除</button>
+            </div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:4px">
+          <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:2px">
             ${evalCheckboxesHtml}
           </div>
-          <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end">
-            <button type="button" onclick="selectAllEvalItems()" class="secondary" style="font-size:12px;padding:4px 10px">全選択</button>
-            <button type="button" onclick="deselectAllEvalItems()" class="secondary" style="font-size:12px;padding:4px 10px">全解除</button>
-          </div>
-          <div style="margin-top:8px;font-size:12px;color:#374151">
-            選択中: <strong id="selectedEvalCount">${selectedEvalItems.size}</strong> 項目（満点: <strong id="maxScore">${selectedEvalItems.size * 3}</strong>点）
+          <div style="margin-top:6px;font-size:11px;color:#374151;text-align:right">
+            選択: <strong id="selectedEvalCount">${selectedEvalItems.size}</strong>項目（満点: <strong id="maxScore">${selectedEvalItems.size * 2}</strong>点）
           </div>
         </div>
       </div>
@@ -1301,6 +1300,24 @@ function selectPatient(patientId){
         updateEvalItemsDisplay();
       });
     });
+    
+    // 全選択/全解除ボタンのイベントリスナー
+    const btnSelectAll = document.getElementById('btnSelectAllEval');
+    const btnDeselectAll = document.getElementById('btnDeselectAllEval');
+    if (btnSelectAll) {
+      btnSelectAll.addEventListener('click', () => {
+        selectedEvalItems = new Set(EVALUATION_ITEMS.map(item => item.id));
+        detailEl.querySelectorAll('.eval-item-checkbox').forEach(cb => cb.checked = true);
+        updateEvalItemsDisplay();
+      });
+    }
+    if (btnDeselectAll) {
+      btnDeselectAll.addEventListener('click', () => {
+        selectedEvalItems.clear();
+        detailEl.querySelectorAll('.eval-item-checkbox').forEach(cb => cb.checked = false);
+        updateEvalItemsDisplay();
+      });
+    }
   }
   
   // ボタンと対話オプションを表示
@@ -1338,7 +1355,7 @@ function updateEvalItemsDisplay() {
   const countEl = $("selectedEvalCount");
   const maxScoreEl = $("maxScore");
   if (countEl) countEl.textContent = selectedEvalItems.size;
-  if (maxScoreEl) maxScoreEl.textContent = selectedEvalItems.size * 3;
+  if (maxScoreEl) maxScoreEl.textContent = selectedEvalItems.size * 2;  // 各項目2点満点
 }
 
 /* 選択した患者情報をPDF出力 */
