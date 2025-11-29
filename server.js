@@ -495,9 +495,39 @@ app.post("/api/sessions/:id/finish", requireAuth, async (req, res) => {
 
 let report = null;
 if (OPENAI_API_KEY && messages.length) {
+  // Version 4.28: 評価項目IDと名前のマッピング（プロンプト生成用）
+  const evalItemIdToName = {
+    intro: "導入", chief: "主訴", opqrst: "OPQRST", ros: "ROS&RedFlag",
+    history: "医療・生活歴", reason: "受診契機", vitals: "バイタル/現症",
+    exam: "身体診察", progress: "進行"
+  };
+  const allItemNames = ["導入","主訴","OPQRST","ROS&RedFlag","医療・生活歴","受診契機","バイタル/現症","身体診察","進行"];
+  const selectedItemNames = selectedEvalItems 
+    ? selectedEvalItems.map(id => evalItemIdToName[id]).filter(Boolean)
+    : allItemNames;
+  const isAllSelected = !selectedEvalItems || selectedEvalItems.length === 9;
+  const unselectedItemNames = allItemNames.filter(n => !selectedItemNames.includes(n));
+  
+  console.log(`[finish] Building prompt with selectedItemNames:`, selectedItemNames);
+  console.log(`[finish] Is all selected:`, isAllSelected);
+
+  // 選択項目に応じた追加指示を生成
+  const selectedItemsInfo = isAllSelected 
+    ? ''
+    : `\n【重要】今回の評価対象項目: ${selectedItemNames.join('、')}（${selectedItemNames.length}項目）\n評価対象外の項目: ${unselectedItemNames.join('、')}`;
+  
+  const summaryExtraRule = isAllSelected 
+    ? ''
+    : `\n- 【重要】評価対象項目（${selectedItemNames.join('、')}）についてのみコメントしてください。評価対象外の項目（${unselectedItemNames.join('、')}）については言及しないでください。`;
+  
+  const improvementsExtraRule = isAllSelected 
+    ? ''
+    : `\n- 【重要】改善点は、評価対象項目（${selectedItemNames.join('、')}）についてのみ記載してください。評価対象外の項目（${unselectedItemNames.join('、')}）については改善点として言及しないでください。`;
+
   const system = `あなたは看護教育の採点官です。会話ログ（看護師/患者）を読み、
 下の9項目で 0/1/2 点の三段階で評価し、短いコメントを日本語で作成してください。
 必ず JSON だけを返し、余計な文章は出力しないこと。
+${selectedItemsInfo}
 
 評価項目（順に配列で出力）:
 1) 導入（名乗り/挨拶）
@@ -556,15 +586,21 @@ if (OPENAI_API_KEY && messages.length) {
   - 0点: 情報収集の流れが不適切、または極端に短時間で終了
 
 summary（総評）の作成ルール（厳守）:
-- 日本語の「です・ます調」。2〜3文、合計180〜250文字に収める。
+- 日本語の「です・ます調」。2〜3文、合計180〜250文字に収める。${summaryExtraRule}
 - 会話ログの事実に基づく具体的な観察を少なくとも3点含める（例:「氏名確認なし」「OPQRSTの“増悪/寛解”未確認」「胸痛の随伴症状を未質問」等）。
 - あいまい語の禁止（例:「全体的に」「だいたい」「不十分」「もっと」「気をつけたい」など）。具体的な名詞・動詞で記述する。
 - 新しい事実の創作は禁止。必要に応じて看護師/患者の発言を短く「」で引用してよい。
 - 批判は簡潔にし、最後は次回に向けた励ましの1文で締める。
 
-positives / improvements の作成ルール:
-- それぞれ3〜5件。各要素は文頭を動詞で始める短い指示文にする（例:「氏名・年齢を最初に確認する」「OPQRSTの“時間経過”を必ず尋ねる」など）。
-- 1要素は45文字以内。具体的な観察や手技名を含める（OPQRST, ROS, Red Flag, バイタル等の語を積極的に使う）。
+positives（良かった点）の作成ルール:
+- 3〜5件。各要素は文頭を動詞で始める短い指示文にする（例:「氏名・年齢を確認した」「患者の訴えに共感を示した」など）。
+- 1要素は45文字以内。具体的な観察や手技名を含める。
+- 【重要】良かった点は、評価対象・対象外に関わらず、会話全体から良い点を見つけて全て褒めてください。
+
+improvements（改善が必要な点）の作成ルール:
+- 3〜5件。各要素は文頭を動詞で始める短い指示文にする（例:「OPQRSTの"時間経過"を必ず尋ねる」など）。
+- 1要素は45文字以内。具体的な観察や手技名を含める。
+${improvementsExtraRule}
 
 出力 JSON 形式:
 {
@@ -592,18 +628,6 @@ positives / improvements の作成ルール:
   try {
     const j = await openaiChatJSON({ system, user, model: "gpt-4o-mini" });
     const rb = Array.isArray(j?.report?.rubric) ? j.report.rubric : [];
-    // Version 4.25: 評価項目IDと名前のマッピング
-    const evalItemIdToName = {
-      intro: "導入", chief: "主訴", opqrst: "OPQRST", ros: "ROS&RedFlag",
-      history: "医療・生活歴", reason: "受診契機", vitals: "バイタル/現症",
-      exam: "身体診察", progress: "進行"
-    };
-    const allItemNames = ["導入","主訴","OPQRST","ROS&RedFlag","医療・生活歴","受診契機","バイタル/現症","身体診察","進行"];
-    const selectedItemNames = selectedEvalItems 
-      ? selectedEvalItems.map(id => evalItemIdToName[id]).filter(Boolean)
-      : allItemNames;
-    
-    console.log(`[finish] Selected item names:`, selectedItemNames);
     
     report = {
       rubric: rb.map((x, i) => {
