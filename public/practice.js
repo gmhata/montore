@@ -796,17 +796,31 @@ const scenarios = {
 };
 
 /* Fallback videos */
-const VIDEO_SRC_FALLBACK = {
+// v4.46: 性別に応じた動画を用意
+const VIDEO_SRC_FEMALE = {
   idle: "/assets/patient_idle.mp4",
   speaking: "/assets/patient_speaking.mp4"
 };
+const VIDEO_SRC_MALE = {
+  idle: "/assets/man_patient_idle.mp4",
+  speaking: "/assets/man_patient_speaking.mp4"
+};
+// デフォルト（後方互換性のため女性）
+const VIDEO_SRC_FALLBACK = VIDEO_SRC_FEMALE;
 
 /* Path helpers */
-function videosForExam(no){ 
+// v4.46: 性別パラメータを追加
+function videosForExam(no, gender){ 
   // Version 3.57: カスタム患者システムに完全移行 - 全患者でデフォルト動画を使用
   // Ver2の固定患者（001-010）と練習モードの階層的動画システムは完全廃止
-  console.log(`[videosForExam] Patient No.${no}: Using default videos (custom patient system)`);
-  return VIDEO_SRC_FALLBACK;
+  // v4.46: 性別に応じて動画を切り替え
+  if (gender === "male") {
+    console.log(`[videosForExam] Patient No.${no}: Using MALE videos`);
+    return VIDEO_SRC_MALE;
+  } else {
+    console.log(`[videosForExam] Patient No.${no}: Using FEMALE videos`);
+    return VIDEO_SRC_FEMALE;
+  }
 }
 
 /* UI helpers */
@@ -1506,7 +1520,8 @@ async function startWithSelectedPatient(){
   const showConversationTextCheckbox = $("showConversationText");
   const showConversationText = showConversationTextCheckbox ? showConversationTextCheckbox.checked : false;
 
-  window.__VIDEO_SRC = videosForExam(p.patientNo);
+  // v4.46: 性別に応じた動画を選択
+  window.__VIDEO_SRC = videosForExam(p.patientNo, p.gender);
   primeVideos();
   
   // Version 4.25: 選択された評価項目を取得
