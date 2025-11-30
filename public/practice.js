@@ -4190,13 +4190,13 @@ function checkForVitalKeywords(text) {
   console.log('[checkForVitalKeywords] Checking text:', text);
 
   // デフォルトの個別キーワード定義（常に使用）
-  // v4.47: 誤検出しやすいキーワードを削除/修正
+  // v4.48: 誤検出しやすい短いキーワードのみ削除（'熱','脈'など）
   const defaultVitalKeywords = {
-    temperature: ['体温', '体温測', '熱測', '体温を測', '熱を測', 'temperature', 'fever'],
+    temperature: ['体温', '体温測', '熱測', '熱を測', '体温を測', '測ります', '測って', 'はかります', 'temperature', 'fever'],
     bloodPressure: ['血圧', 'けつあつ', '血圧測', '血圧を測', 'blood pressure'],
-    pulse: ['脈拍', '心拍', '脈を測', '脈拍測', 'pulse', 'heart rate'],
-    respiration: ['呼吸数', '呼吸を測', '呼吸確認', 'respiration', 'breathing', 'respiratory rate'],
-    spo2: ['spo2', 'sp02', 'サチュレーション', '酸素飽和度', '酸素濃度', '酸素を測']
+    pulse: ['脈拍', '心拍', '脈測', '脈を測', 'pulse', 'heart rate'],
+    respiration: ['呼吸', '呼吸数', '呼吸を測', 'respiration', 'breathing', 'respiratory rate'],
+    spo2: ['酸素', 'spo2', 'sp02', 'サチュレーション', '酸素飽和度', '酸素濃度']
   };
 
   // シナリオ設定とデフォルトをマージ（デフォルトを常に含める）
@@ -4255,12 +4255,12 @@ function checkForExamKeywords(text) {
   const lowerText = text.toLowerCase();
 
   // デフォルトの個別キーワード定義（常に使用）
-  // v4.47: 誤検出しやすいキーワードを削除/修正
+  // v4.48: 誤検出しやすい短いキーワードのみ削除（'音','見ます'など）
   const defaultExamKeywords = {
-    inspection: ['視診', '見せて', '拝見', '診させて', 'inspection', '目で見', '視て'],
-    palpation: ['触診', '触ります', '触って', '触らせて', '触診させて', 'palpation', 'お腹を触', '腹部を触'],
-    auscultation: ['聴診', '聴診器', '胸の音', '肺の音', '心音', '呼吸音', 'auscultation', '音を聞'],
-    percussion: ['打診', '叩いて', '叩きます', '打診させて', 'percussion']
+    inspection: ['視診', '見せて', '拝見', '診ます', '診させて', 'inspection', '観察'],
+    palpation: ['触診', '触ります', '触って', '触れ', '押して', '押します', '触らせて', '触診させて', 'palpation', '腹部', 'お腹'],
+    auscultation: ['聴診', '聴きます', '聴いて', '聴かせ', '聴診器', '聞かせて', 'auscultation', '心音', '呼吸音', '肺の音', '胸の音', '聞いて'],
+    percussion: ['打診', '打ちます', '叩いて', '叩き', '打診させて', 'percussion']
   };
 
   // シナリオ設定とデフォルトをマージ（デフォルトを常に含める）
