@@ -93,6 +93,36 @@ async function refreshUsers(){
     pane.innerHTML = `
       <h3>ユーザー管理</h3>
       <div class="muted small" style="margin-bottom:.5rem">権限：一般／管理者 を切り替えできます。名前・備考欄をダブルクリックで編集できます。</div>
+      
+      <!-- v4.54: 新規ユーザー登録フォーム -->
+      <div style="margin:16px 0; padding:16px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px">
+        <h4 style="margin:0 0 12px; color:#166534; font-size:14px">➕ 新規ユーザー登録</h4>
+        <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end">
+          <div style="flex:1; min-width:200px">
+            <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px">メールアドレス <span style="color:#dc2626">*</span></label>
+            <input type="email" id="newUserEmail" placeholder="example@otemae.ac.jp" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+          </div>
+          <div style="flex:1; min-width:150px">
+            <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px">名前</label>
+            <input type="text" id="newUserName" placeholder="山田 太郎" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+          </div>
+          <div style="min-width:100px">
+            <label style="display:block; font-size:12px; font-weight:600; margin-bottom:4px">権限</label>
+            <select id="newUserRole" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+              <option value="user">一般</option>
+              <option value="admin">管理者</option>
+            </select>
+          </div>
+          <div>
+            <button id="createUserBtn" style="padding:8px 20px; background:#059669; color:white; border:none; border-radius:4px; font-weight:600; cursor:pointer">
+              登録
+            </button>
+          </div>
+          <span id="createUserStatus" style="font-size:12px"></span>
+        </div>
+        <div class="muted small" style="margin-top:8px">※ 登録したユーザーは初回ログイン時にパスワードを設定します（Googleログインの場合は不要）</div>
+      </div>
+      
       <div style="overflow:auto">
         <table class="tbl" id="userTable">
           <thead>
@@ -320,6 +350,80 @@ async function refreshUsers(){
         }
       });
     });
+
+    // v4.54: 新規ユーザー登録機能
+    const createUserBtn = $("createUserBtn");
+    const createUserStatus = $("createUserStatus");
+    if (createUserBtn) {
+      createUserBtn.addEventListener("click", async () => {
+        const emailInput = $("newUserEmail");
+        const nameInput = $("newUserName");
+        const roleSelect = $("newUserRole");
+        
+        const email = emailInput?.value?.trim() || "";
+        const name = nameInput?.value?.trim() || "";
+        const role = roleSelect?.value || "user";
+        
+        // バリデーション
+        if (!email) {
+          createUserStatus.textContent = "メールアドレスを入力してください";
+          createUserStatus.style.color = "#dc2626";
+          return;
+        }
+        
+        // 簡易的なメール形式チェック
+        if (!email.includes("@") || !email.includes(".")) {
+          createUserStatus.textContent = "有効なメールアドレスを入力してください";
+          createUserStatus.style.color = "#dc2626";
+          return;
+        }
+        
+        // 既存ユーザーチェック
+        const existingUser = rows.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        if (existingUser) {
+          createUserStatus.textContent = "このメールアドレスは既に登録されています";
+          createUserStatus.style.color = "#dc2626";
+          return;
+        }
+        
+        try {
+          createUserBtn.disabled = true;
+          createUserBtn.textContent = "登録中...";
+          createUserStatus.textContent = "";
+          
+          const t2 = await getIdToken();
+          if (!t2) throw new Error("認証エラー");
+          
+          const r2 = await fetch("/api/admin/users/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: "Bearer " + t2 },
+            body: JSON.stringify({ email, name, role })
+          });
+          
+          const j2 = await r2.json().catch(() => ({}));
+          if (!r2.ok) throw new Error(j2?.error || `HTTP ${r2.status}`);
+          
+          createUserStatus.textContent = "✓ ユーザーを登録しました";
+          createUserStatus.style.color = "#059669";
+          
+          // フォームをクリア
+          if (emailInput) emailInput.value = "";
+          if (nameInput) nameInput.value = "";
+          if (roleSelect) roleSelect.value = "user";
+          
+          // ユーザー一覧を更新
+          setTimeout(() => refreshUsers(), 1000);
+          
+        } catch (e) {
+          console.error("[createUser] Error:", e);
+          createUserStatus.textContent = "登録失敗: " + (e.message || e);
+          createUserStatus.style.color = "#dc2626";
+        } finally {
+          createUserBtn.disabled = false;
+          createUserBtn.textContent = "登録";
+        }
+      });
+    }
 
   }catch(e){
     const pane = $("pane-users"); if (pane) pane.innerHTML = `<div class="err">取得失敗: ${esc(e.message||String(e))}</div>`;

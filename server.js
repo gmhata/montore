@@ -3098,6 +3098,90 @@ app.get("/api/admin/users", requireAuth, requireAdmin, async (_req, res) => {
   }
 });
 
+// v4.54: POST /api/admin/users/create - 新規ユーザー登録（管理者のみ）
+app.post("/api/admin/users/create", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ ok: false, error: "db not ready" });
+    if (!adminReady) return res.status(503).json({ ok: false, error: "admin SDK not ready" });
+    
+    const { email, name, role } = req.body || {};
+    
+    // バリデーション
+    if (!email || typeof email !== "string" || !email.includes("@")) {
+      return res.status(400).json({ ok: false, error: "有効なメールアドレスを入力してください" });
+    }
+    
+    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedRole = (role === "admin") ? "admin" : "user";
+    const normalizedName = (name || "").trim();
+    
+    console.log(`[admin/users/create] Creating user: email=${normalizedEmail}, name=${normalizedName}, role=${normalizedRole}`);
+    
+    // 既存ユーザーチェック（Firestoreのusersコレクション）
+    const existingUsers = await db.collection("users").where("email", "==", normalizedEmail).get();
+    if (!existingUsers.empty) {
+      return res.status(400).json({ ok: false, error: "このメールアドレスは既に登録されています" });
+    }
+    
+    // Firebase Authenticationでユーザー作成を試みる
+    let firebaseUser = null;
+    try {
+      // まず既存のAuthユーザーを確認
+      firebaseUser = await admin.auth().getUserByEmail(normalizedEmail);
+      console.log(`[admin/users/create] Found existing Firebase Auth user: ${firebaseUser.uid}`);
+    } catch (authErr) {
+      if (authErr.code === "auth/user-not-found") {
+        // ユーザーが存在しない場合は新規作成
+        try {
+          firebaseUser = await admin.auth().createUser({
+            email: normalizedEmail,
+            displayName: normalizedName || undefined,
+            // パスワードは設定しない（ユーザーが初回ログイン時にパスワードリセットするか、Googleログインを使用）
+          });
+          console.log(`[admin/users/create] Created new Firebase Auth user: ${firebaseUser.uid}`);
+        } catch (createErr) {
+          console.error(`[admin/users/create] Failed to create Firebase Auth user:`, createErr);
+          return res.status(500).json({ ok: false, error: `Firebase Authユーザー作成失敗: ${createErr.message}` });
+        }
+      } else {
+        console.error(`[admin/users/create] Firebase Auth error:`, authErr);
+        return res.status(500).json({ ok: false, error: `Firebase Auth確認失敗: ${authErr.message}` });
+      }
+    }
+    
+    // userNoを取得（最大値+1）
+    const allUsers = await db.collection("users").orderBy("userNo", "desc").limit(1).get();
+    const maxUserNo = allUsers.empty ? 0 : (allUsers.docs[0].data().userNo || 0);
+    const newUserNo = maxUserNo + 1;
+    
+    // Firestoreにユーザードキュメントを作成
+    const userData = {
+      email: normalizedEmail,
+      name: normalizedName,
+      role: normalizedRole,
+      userNo: newUserNo,
+      isAdmin: normalizedRole === "admin",
+      createdAt: Date.now(),
+      createdBy: req.user.email || req.user.uid,
+      lastLogin: null
+    };
+    
+    await db.collection("users").doc(firebaseUser.uid).set(userData);
+    console.log(`[admin/users/create] Created Firestore user document: ${firebaseUser.uid}, userNo=${newUserNo}`);
+    
+    res.json({ 
+      ok: true, 
+      uid: firebaseUser.uid, 
+      userNo: newUserNo,
+      message: `ユーザー「${normalizedEmail}」を登録しました`
+    });
+    
+  } catch (e) {
+    console.error("[admin/users/create] Error:", e);
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
 app.patch("/api/admin/users/:uid", requireAuth, requireAdmin, async (req, res) => {
   try {
     if (!dbReady) return res.status(503).json({ ok:false, error:"db not ready" });
