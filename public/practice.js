@@ -4189,8 +4189,7 @@ function checkForVitalKeywords(text) {
 
   console.log('[checkForVitalKeywords] Checking text:', text);
 
-  // デフォルトの個別キーワード定義（常に使用）
-  // v4.48: 誤検出しやすい短いキーワードのみ削除（'熱','脈'など）
+  // v4.50: キーワード管理画面の設定を完全に反映（設定があればそれを使用、なければデフォルト）
   const defaultVitalKeywords = {
     temperature: ['体温', '体温測', '熱測', '熱を測', '体温を測', '測ります', '測って', 'はかります', 'temperature', 'fever'],
     bloodPressure: ['血圧', 'けつあつ', '血圧測', '血圧を測', 'blood pressure'],
@@ -4199,14 +4198,17 @@ function checkForVitalKeywords(text) {
     spo2: ['酸素', 'spo2', 'sp02', 'サチュレーション', '酸素飽和度', '酸素濃度']
   };
 
-  // シナリオ設定とデフォルトをマージ（デフォルトを常に含める）
-  let vitalKeywords = { ...defaultVitalKeywords };
-  if (currentScenarioConfig && currentScenarioConfig.vitalKeywords) {
-    // シナリオ設定のキーワードを追加（既存のキーワードに追加）
-    for (const [key, keywords] of Object.entries(currentScenarioConfig.vitalKeywords)) {
-      if (Array.isArray(keywords) && keywords.length > 0) {
-        vitalKeywords[key] = [...(vitalKeywords[key] || []), ...keywords];
-      }
+  // キーワード管理画面で設定があればそれを使用、なければデフォルトを使用
+  let vitalKeywords = {};
+  const hasVitalConfig = currentScenarioConfig && currentScenarioConfig.vitalKeywords;
+  
+  for (const key of Object.keys(defaultVitalKeywords)) {
+    if (hasVitalConfig && Array.isArray(currentScenarioConfig.vitalKeywords[key])) {
+      // 設定がある場合はその設定を使用（空配列なら検出しない）
+      vitalKeywords[key] = currentScenarioConfig.vitalKeywords[key];
+    } else {
+      // 設定がない場合はデフォルトを使用
+      vitalKeywords[key] = defaultVitalKeywords[key];
     }
   }
 
@@ -4254,8 +4256,7 @@ function checkForExamKeywords(text) {
   
   const lowerText = text.toLowerCase();
 
-  // デフォルトの個別キーワード定義（常に使用）
-  // v4.48: 誤検出しやすい短いキーワードのみ削除（'音','見ます'など）
+  // v4.50: キーワード管理画面の設定を完全に反映（設定があればそれを使用、なければデフォルト）
   const defaultExamKeywords = {
     inspection: ['視診', '見せて', '拝見', '診ます', '診させて', 'inspection', '観察'],
     palpation: ['触診', '触ります', '触って', '触れ', '押して', '押します', '触らせて', '触診させて', 'palpation', '腹部', 'お腹'],
@@ -4263,14 +4264,17 @@ function checkForExamKeywords(text) {
     percussion: ['打診', '打ちます', '叩いて', '叩き', '打診させて', 'percussion']
   };
 
-  // シナリオ設定とデフォルトをマージ（デフォルトを常に含める）
-  let examKeywords = { ...defaultExamKeywords };
-  if (currentScenarioConfig && currentScenarioConfig.examKeywords) {
-    // シナリオ設定のキーワードを追加（既存のキーワードに追加）
-    for (const [key, keywords] of Object.entries(currentScenarioConfig.examKeywords)) {
-      if (Array.isArray(keywords) && keywords.length > 0) {
-        examKeywords[key] = [...(examKeywords[key] || []), ...keywords];
-      }
+  // キーワード管理画面で設定があればそれを使用、なければデフォルトを使用
+  let examKeywords = {};
+  const hasExamConfig = currentScenarioConfig && currentScenarioConfig.examKeywords;
+  
+  for (const key of Object.keys(defaultExamKeywords)) {
+    if (hasExamConfig && Array.isArray(currentScenarioConfig.examKeywords[key])) {
+      // 設定がある場合はその設定を使用（空配列なら検出しない）
+      examKeywords[key] = currentScenarioConfig.examKeywords[key];
+    } else {
+      // 設定がない場合はデフォルトを使用
+      examKeywords[key] = defaultExamKeywords[key];
     }
   }
 

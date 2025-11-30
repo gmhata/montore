@@ -2125,24 +2125,39 @@ async function mountScenariosPane() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      if (data.ok && data.config) {
-        // バイタルサインのキーワードを入力欄に表示
-        const vitalKeywords = data.config.vitalKeywords || {};
-        $("vital_temperature").value = (vitalKeywords.temperature || []).join(", ");
-        $("vital_bloodPressure").value = (vitalKeywords.bloodPressure || []).join(", ");
-        $("vital_pulse").value = (vitalKeywords.pulse || []).join(", ");
-        $("vital_respiration").value = (vitalKeywords.respiration || []).join(", ");
-        $("vital_spo2").value = (vitalKeywords.spo2 || []).join(", ");
+      // v4.50: デフォルトキーワード（設定がない場合に使用）
+      const defaultVitalKeywords = {
+        temperature: ['体温', '体温測', '熱測', '熱を測', '体温を測', '測ります', '測って', 'はかります', 'temperature', 'fever'],
+        bloodPressure: ['血圧', 'けつあつ', '血圧測', '血圧を測', 'blood pressure'],
+        pulse: ['脈拍', '心拍', '脈測', '脈を測', 'pulse', 'heart rate'],
+        respiration: ['呼吸', '呼吸数', '呼吸を測', 'respiration', 'breathing', 'respiratory rate'],
+        spo2: ['酸素', 'spo2', 'sp02', 'サチュレーション', '酸素飽和度', '酸素濃度']
+      };
+      const defaultExamKeywords = {
+        inspection: ['視診', '見せて', '拝見', '診ます', '診させて', 'inspection', '観察'],
+        palpation: ['触診', '触ります', '触って', '触れ', '押して', '押します', '触らせて', '触診させて', 'palpation', '腹部', 'お腹'],
+        auscultation: ['聴診', '聴きます', '聴いて', '聴かせ', '聴診器', '聞かせて', 'auscultation', '心音', '呼吸音', '肺の音', '胸の音', '聞いて'],
+        percussion: ['打診', '打ちます', '叩いて', '叩き', '打診させて', 'percussion']
+      };
 
-        // 身体診察のキーワードを入力欄に表示
-        const examKeywords = data.config.examKeywords || {};
-        $("exam_inspection").value = (examKeywords.inspection || []).join(", ");
-        $("exam_palpation").value = (examKeywords.palpation || []).join(", ");
-        $("exam_auscultation").value = (examKeywords.auscultation || []).join(", ");
-        $("exam_percussion").value = (examKeywords.percussion || []).join(", ");
+      // 設定があればその値を、なければデフォルト値を表示
+      const vitalKeywords = (data.ok && data.config && data.config.vitalKeywords) ? data.config.vitalKeywords : {};
+      const examKeywords = (data.ok && data.config && data.config.examKeywords) ? data.config.examKeywords : {};
 
-        statusSpan.textContent = "";
-      }
+      // バイタルサインのキーワードを入力欄に表示（設定がなければデフォルト）
+      $("vital_temperature").value = (vitalKeywords.temperature || defaultVitalKeywords.temperature).join(", ");
+      $("vital_bloodPressure").value = (vitalKeywords.bloodPressure || defaultVitalKeywords.bloodPressure).join(", ");
+      $("vital_pulse").value = (vitalKeywords.pulse || defaultVitalKeywords.pulse).join(", ");
+      $("vital_respiration").value = (vitalKeywords.respiration || defaultVitalKeywords.respiration).join(", ");
+      $("vital_spo2").value = (vitalKeywords.spo2 || defaultVitalKeywords.spo2).join(", ");
+
+      // 身体診察のキーワードを入力欄に表示（設定がなければデフォルト）
+      $("exam_inspection").value = (examKeywords.inspection || defaultExamKeywords.inspection).join(", ");
+      $("exam_palpation").value = (examKeywords.palpation || defaultExamKeywords.palpation).join(", ");
+      $("exam_auscultation").value = (examKeywords.auscultation || defaultExamKeywords.auscultation).join(", ");
+      $("exam_percussion").value = (examKeywords.percussion || defaultExamKeywords.percussion).join(", ");
+
+      statusSpan.textContent = "";
     } catch (err) {
       console.error("Failed to load keyword config:", err);
       statusSpan.textContent = "読み込みエラー";
