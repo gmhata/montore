@@ -113,14 +113,23 @@ Firestore Database
 │
 ├── test_patients/                 # シナリオ患者設定
 │   └── {patientId}/
-│       ├── patientNo: number
-│       ├── name: string
-│       ├── age: string
-│       ├── profile: string
-│       ├── expectedVitals: object
-│       ├── expectedExams: string[]
-│       ├── active: boolean
-│       └── isPublic: boolean
+│       ├── patientNo: number           # 患者番号（自動採番）
+│       ├── name: string                # 患者名
+│       ├── gender: string              # "male" | "female"
+│       ├── ageBand: string             # "child" | "adult" | "elderly"
+│       ├── language: string            # "ja" | "en" | "ko" | "zh"
+│       ├── brokenJapanese: boolean     # カタコト日本語モード
+│       ├── profile: string             # 患者プロフィール（症状・背景）
+│       ├── timeLimit: number           # 制限時間（秒、デフォルト180）
+│       ├── expectedVitals: object      # 期待されるバイタル値
+│       ├── expectedExams: string[]     # 期待される身体診察項目
+│       ├── videos: object              # 動画設定 {idle, listening, speaking, thinking}
+│       ├── active: boolean             # 有効/無効
+│       ├── isPublic: boolean           # 受講者に公開するか
+│       ├── createdAt: timestamp
+│       ├── updatedAt: timestamp
+│       ├── createdBy: object           # {uid, email}
+│       └── updatedBy: object           # {uid, email}
 │
 └── systemConfigs/                 # システム設定
     ├── rubric/                    # 評価ルーブリック設定
@@ -157,14 +166,246 @@ gcloud run deploy montore \
 
 ---
 
-## 4. AI評価システム
+## 4. AIプロンプトシステム
 
-### 4.1 システムプロンプト（評価用）
+MONTOREでは2つの主要なAIプロンプトシステムを使用しています：
+1. **患者シミュレーション用プロンプト** - OpenAI Realtime APIで患者役を演じさせる
+2. **評価用プロンプト** - GPT-4o-miniで会話を採点する
+
+---
+
+### 4.1 患者シミュレーション用プロンプト（会話用）
+
+#### 概要
+OpenAI Realtime API (`gpt-4o-realtime-preview-2024-12-17`) に送信される指示文（instructions）です。
+患者の性格、症状、言語、振る舞いを定義し、リアルタイム音声対話で患者役を演じさせます。
+
+#### プロンプト生成関数
+`buildInstructions()` 関数（`public/practice.js`）で動的に生成されます。
+
+```javascript
+buildInstructions({
+  name: "患者名",
+  ageBand: "adult" | "child" | "elderly",
+  gender: "male" | "female",
+  lang: "ja" | "en" | "ko" | "zh",
+  brokenJapanese: false | true,
+  profile: "患者プロフィール（症状・背景情報）"
+})
+```
+
+#### 患者シミュレーション プロンプト構造
+
+プロンプトは以下のセクションで構成されます：
+
+##### 1. 最重要制約ルール（CRITICAL SYSTEM INSTRUCTIONS）
+```
+========================================
+🚨 CRITICAL SYSTEM INSTRUCTIONS - ABSOLUTE PRIORITY 🚨
+========================================
+
+⚠️ YOU ARE A SICK PATIENT ⚠️
+YOU ARE CURRENTLY ILL AND IN PAIN.
+YOU ARE NOT HEALTHY. YOU ARE NOT HAVING A NORMAL CONVERSATION.
+YOU ARE SUFFERING FROM A MEDICAL CONDITION.
+
+ABSOLUTE RULES - NO EXCEPTIONS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. YOU ARE SICK - Act like it EVERY response
+2. ONLY talk about YOUR SYMPTOMS and PAIN
+3. NEVER discuss: weather, hobbies, work, family stories, general topics
+4. NEVER ask the nurse ANY questions
+5. NEVER give advice or make suggestions
+6. NEVER be cheerful or energetic
+7. Use SHORT sentences (≤15 words)
+8. Sound WEAK, TIRED, and UNCOMFORTABLE
+```
+
+##### 2. バイタルサインと身体診察のルール
+```
+VITAL SIGNS AND PHYSICAL EXAMINATION - CRITICAL RULES:
+⚠️ NEVER volunteer vital sign information (temperature, blood pressure, pulse, etc.)
+⚠️ You DO NOT KNOW your vital signs unless measured by medical equipment
+⚠️ NEVER state specific numbers for temperature, blood pressure, pulse, etc.
+- Patients cannot know their exact vital signs without measurement
+- Only medical equipment can provide these numbers
+
+⚠️ COOPERATION WITH MEASUREMENTS - IMPORTANT:
+When the nurse requests to measure vital signs or perform physical examinations:
+✓ BE COOPERATIVE and accept immediately with simple affirmative responses
+✓ Examples:
+  - "体温を測らせてください" → "はい" or "はい、お願いします"
+  - "血圧を測りましょう" → "はい" or "わかりました"
+  - "聴診させてください" → "はい" or "どうぞ"
+```
+
+##### 3. 基本識別情報への応答ルール
+```
+⚠️ BASIC IDENTIFICATION - ALWAYS ANSWER:
+When the nurse asks about your basic information, ALWAYS answer:
+✓ Name: Answer with your name when asked "お名前は？" or "What is your name?"
+✓ Age: Answer with your age when asked "何歳ですか？" or "How old are you?"
+✓ Date of birth: Answer if asked "生年月日は？" or "What is your date of birth?"
+```
+
+##### 4. 言語設定ルール
+
+**日本語モード (lang="ja")**:
+```
+⚠️ 【最重要】あなたは必ず日本語のみで応答してください
+⚠️ 絶対に英語や他の言語に切り替えてはいけません
+⚠️ 全ての単語、全ての文章を日本語で話してください
+⚠️ 英語を一語でも使ったら失格です
+```
+
+**外国語モード（日本語が話せない外国人患者）**:
+- `lang="en"`: 英語のみで応答
+- `lang="ko"`: 韓国語のみで応答
+- `lang="zh"`: 中国語（簡体字）のみで応答
+
+```
+🚨 CRITICAL LANGUAGE RULE - YOU ONLY SPEAK ${langName.toUpperCase()} 🚨
+
+YOU ARE A ${langName.toUpperCase()}-ONLY SPEAKER FROM ABROAD.
+You came to Japan for travel/work but you DO NOT speak Japanese.
+
+⚠️ YOU CANNOT UNDERSTAND JAPANESE AT ALL:
+- Japanese sounds like meaningless noise to you
+- You have NEVER studied Japanese
+- Words like "痛い", "はい", "いいえ", "お名前" mean NOTHING to you
+
+⚠️ WHEN THE NURSE SPEAKS JAPANESE:
+- You look confused
+- You shake your head
+- You say: "I don't understand. Do you speak English?"
+```
+
+**カタコト日本語モード (brokenJapanese=true)**:
+外国人患者が約100文字レベルの初歩的な日本語で応答するモード
+
+```
+⚠️ CRITICAL: You MUST respond in BROKEN JAPANESE (カタコト日本語)
+⚠️ You are a foreigner with LIMITED Japanese (~100 characters level)
+
+HOW TO SPEAK BROKEN JAPANESE (カタコト):
+✓ ALWAYS OMIT particles (は、が、を、に、で、と)
+  - Example: "昨日から頭痛い" (not "昨日から頭が痛い")
+✓ NEVER use polite forms (です、ます)
+  - Example: "わからない" (not "わかりません")
+✓ Very short phrases - 2-4 words maximum per phrase
+✓ Sound like a struggling foreigner
+  - Hesitate: "えっと...頭...痛い..."
+
+EXAMPLES:
+❌ WRONG (too fluent): "昨日の朝から頭が痛くて、仕事に集中できませんでした。"
+✓ CORRECT (broken): "昨日から。頭、痛い。"
+```
+
+##### 5. 年齢帯別の話し方スタイル
+
+**子ども (ageBand="child")**:
+```
+SPEAKING STYLE - CHILD:
+- Speak slightly FASTER with more energy (but still sound sick)
+- Use simple words and short sentences (maximum 10 words)
+- Respond quickly with "yes/no" answers when appropriate
+- Show some impatience or restlessness in speech
+```
+
+**大人 (ageBand="adult")**:
+```
+SPEAKING STYLE - ADULT:
+- Speak at NORMAL pace
+- Be direct and clear
+- Maximum 15 words per sentence
+- Professional but suffering tone
+```
+
+**高齢者 (ageBand="elderly")**:
+```
+SPEAKING STYLE - ELDERLY:
+- Speak SLOWLY and deliberately
+- Take pauses between phrases
+- Use polite, respectful language
+- Sound tired and weary
+- Maximum 12 words per sentence
+- Speak as if you need time to think and breathe
+```
+
+##### 6. 患者プロフィール（症状情報）
+
+```
+========================================
+YOUR MEDICAL CONDITION (MOST IMPORTANT):
+========================================
+主訴: ${profile}
+
+YOU ARE CURRENTLY SUFFERING FROM THIS CONDITION.
+You must act as a patient based on the condition and symptoms described above.
+NEVER forget you are sick and in discomfort.
+========================================
+```
+
+##### 7. 禁止事項
+
+```
+STRICTLY FORBIDDEN TOPICS:
+❌ "How are you?" / "Nice weather" / "How's your day?"
+❌ Hobbies, interests, entertainment, sports
+❌ Family stories unrelated to your illness
+❌ Work or school stories
+❌ General conversation or small talk
+❌ Questions to the nurse
+❌ Advice or suggestions
+```
+
+#### 音声設定
+
+| 性別 | 使用する声 | 説明 |
+|------|-----------|------|
+| female | shimmer | 明るい女性の声 |
+| male | echo | より男性的な声 |
+
+```javascript
+function chooseVoice({ gender="female", ageBand="adult" } = {}){
+  if (gender === "male") {
+    return "echo";
+  } else {
+    return "shimmer";
+  }
+}
+```
+
+#### Realtime API セッション設定
+
+```javascript
+{
+  type: "session.update",
+  session: {
+    voice: voiceName,           // "shimmer" or "echo"
+    modalities: ["text", "audio"],
+    instructions: instr,        // buildInstructions() の結果
+    turn_detection: {
+      type: "server_vad",
+      silence_duration_ms: 700,
+      prefix_padding_ms: 200
+    }
+  }
+}
+```
+
+---
+
+### 4.3 システムプロンプト（評価用）
 
 評価処理は `/api/sessions/:id/finish` エンドポイントで実行されます。
 システムプロンプトは動的に生成され、以下の構造を持ちます。
 
-#### システムプロンプト全文テンプレート
+#### 使用モデル
+- **モデル**: `gpt-4o-mini`
+- **レスポンス形式**: JSON
+
+#### 評価用システムプロンプト全文テンプレート
 
 ```
 あなたは看護教育の採点官です。会話ログ（看護師/患者）を読み、
@@ -234,7 +475,24 @@ ${選択項目に応じた改善点ルール}
 - 具体的なフィードバック（良かった点・改善点）の生成
 - 総評の自動生成
 
-### 4.2 ユーザープロンプト（評価用）
+#### 動的生成される部分
+
+1. **選択項目に応じた追加指示** (`selectedItemsInfo`)
+   - 全9項目選択時: 空
+   - 一部項目選択時: `【重要】今回の評価対象項目: ${選択項目}（${件数}項目）\n評価対象外の項目: ${未選択項目}`
+
+2. **summary追加ルール** (`summaryExtraRule`)
+   - 一部項目選択時: `【重要】評価対象項目についてのみコメントしてください。評価対象外の項目については言及しないでください。`
+
+3. **improvements追加ルール** (`improvementsExtraRule`)
+   - 一部項目選択時: `【重要】改善点は、評価対象項目についてのみ記載してください。`
+
+4. **ルーブリック評価基準** (`rubricCriteriaText`)
+   - Firestoreの `systemConfigs/rubric` から読み込み
+   - 未設定時はデフォルト値を使用
+   - バイタル/現症・身体診察は操作記録で判定済みであることを明記
+
+### 4.4 ユーザープロンプト（評価用）
 
 ```
 会話ログ:
@@ -246,13 +504,26 @@ ${選択項目に応じた改善点ルール}
 上記の厳密な形式とルールで JSON のみ返してください。
 ```
 
+#### 生成コード
+```javascript
+const convo = messages.map(m => 
+  `${m.who === "nurse" ? "看護師" : "患者"}: ${m.text}`
+).join("\n");
+
+const user = `会話ログ:\n${convo}\n\n上記の厳密な形式とルールで JSON のみ返してください。`;
+```
+
 #### 用途
 - 会話ログをシステムプロンプトの指示に従って評価するための入力データ
 - 会話は「看護師」と「患者」のラベル付きで時系列順に整形
 
-### 4.3 使用モデル
-- **評価処理**: `gpt-4o-mini`
-- **レスポンス形式**: JSON
+### 4.5 プロンプト一覧サマリ
+
+| プロンプト | 用途 | モデル | 場所 |
+|-----------|------|--------|------|
+| 患者シミュレーション | リアルタイム会話で患者役を演じる | gpt-4o-realtime-preview | `public/practice.js` buildInstructions() |
+| 評価用システム | 会話ログを採点 | gpt-4o-mini | `server.js` /api/sessions/:id/finish |
+| 評価用ユーザー | 会話ログを入力 | gpt-4o-mini | `server.js` /api/sessions/:id/finish |
 
 ---
 
@@ -511,6 +782,63 @@ Fields:
 
 - `OPENAI_API_KEY` は Google Cloud Secret Manager で管理
 - Firebase設定はサーバー側で動的生成（`/firebase-config.js`）
+
+---
+
+## 11. 患者設定パラメータ
+
+### 11.1 基本パラメータ
+
+| パラメータ | 型 | 必須 | 説明 |
+|-----------|------|------|------|
+| name | string | ✓ | 患者名（例: 山田太郎） |
+| gender | string | ✓ | 性別: "male" または "female" |
+| ageBand | string | ✓ | 年齢帯: "child", "adult", "elderly" |
+| language | string | ✓ | 言語: "ja", "en", "ko", "zh" |
+| brokenJapanese | boolean | - | カタコト日本語モード（デフォルト: false） |
+| profile | string | ✓ | 症状・背景情報（AI患者の振る舞いを決定） |
+| timeLimit | number | - | 制限時間（秒、デフォルト: 180） |
+
+### 11.2 言語設定の組み合わせ
+
+| language | brokenJapanese | 動作 |
+|----------|---------------|------|
+| ja | false | 日本語のみで応答（標準モード） |
+| ja | true | - （日本語モードでは無効） |
+| en | false | 英語のみで応答（日本語を理解しない） |
+| en | true | カタコト日本語で応答（約100文字レベル） |
+| ko | false | 韓国語のみで応答（日本語を理解しない） |
+| ko | true | カタコト日本語で応答（約100文字レベル） |
+| zh | false | 中国語のみで応答（日本語を理解しない） |
+| zh | true | カタコト日本語で応答（約100文字レベル） |
+
+### 11.3 年齢帯による振る舞いの違い
+
+| ageBand | 話す速さ | 文の長さ | 特徴 |
+|---------|---------|---------|------|
+| child | やや速め | 最大10語 | 落ち着きがない、イエス/ノーが多い |
+| adult | 普通 | 最大15語 | 直接的で明確、プロフェッショナル |
+| elderly | ゆっくり | 最大12語 | 丁寧、疲れた様子、話の間に間がある |
+
+### 11.4 プロフィール（profile）の書き方
+
+プロフィールは患者の症状と背景を定義します。AIはこの情報に基づいて患者役を演じます。
+
+**例1: 胸痛患者**
+```
+45歳男性。2日前から胸の中央に締め付けられるような痛みがある。
+歩くと悪化し、安静にすると少し楽になる。
+既往歴: 高血圧で内服中。喫煙歴20年。
+今朝から痛みが強くなり来院。
+```
+
+**例2: 頭痛患者（カタコト日本語）**
+```
+30歳女性。旅行で来日中の韓国人。
+3日前から頭痛が続いている。吐き気もある。
+海外旅行保険に加入している。
+英語は少しできるが、日本語は初歩レベル。
+```
 
 ---
 
