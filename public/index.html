@@ -583,7 +583,7 @@
           <button id="btnLogout" class="secondary" style="display:none">ログアウト</button>
         </div>
       </div>
-      <div class="version-badge">version: 4.51</div>
+      <div class="version-badge">version: 4.52</div>
     </section>
 
     <!-- トップ -->
@@ -628,7 +628,7 @@
           </div>
         </div>
       </div>
-      <div class="version-badge">version: 4.51</div>
+      <div class="version-badge">version: 4.52</div>
     </section>
 
     <!-- 対話 -->
@@ -941,7 +941,7 @@
               <div class="muted">読み込み中...</div>
             </div>
             
-            <div style="margin-top:24px; display:flex; gap:12px; align-items:center">
+            <div style="margin-top:24px; display:flex; flex-wrap:wrap; gap:12px; align-items:center">
               <button id="saveRubricConfig" style="padding:12px 24px; background:#8b5cf6; color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer">
                 ルーブリックを保存
               </button>
@@ -949,6 +949,17 @@
                 デフォルトに戻す
               </button>
               <span id="rubricConfigStatus" style="margin-left:12px; color:#10b981"></span>
+            </div>
+            
+            <div style="margin-top:16px; padding-top:16px; border-top:1px solid #e5e7eb; display:flex; flex-wrap:wrap; gap:12px; align-items:center">
+              <button id="exportRubricConfig" style="padding:10px 20px; background:#059669; color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px">
+                📥 ファイルに保存
+              </button>
+              <button id="importRubricConfig" style="padding:10px 20px; background:#0ea5e9; color:white; border:none; border-radius:6px; font-weight:600; cursor:pointer; font-size:13px">
+                📤 ファイルから読込
+              </button>
+              <input type="file" id="rubricFileInput" accept=".json,.txt" style="display:none">
+              <span class="muted small">※設定をバックアップ・復元できます</span>
             </div>
           </div>
 

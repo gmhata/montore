@@ -4169,9 +4169,51 @@ async function mountRubricPane() {
     editArea.innerHTML = html;
   };
 
+  // フォームから値を収集する共通関数
+  const collectRubricFromForm = () => {
+    return DEFAULT_RUBRIC.map((item, index) => {
+      const score2Input = document.querySelector(`.rubric-score2[data-id="${item.id}"]`);
+      const score1Input = document.querySelector(`.rubric-score1[data-id="${item.id}"]`);
+      const score0Input = document.querySelector(`.rubric-score0[data-id="${item.id}"]`);
+      const noteInput = document.querySelector(`.rubric-note[data-id="${item.id}"]`);
+      
+      return {
+        id: item.id,
+        name: item.name,
+        criteria: {
+          score2: score2Input ? score2Input.value.trim() : item.criteria.score2,
+          score1: score1Input ? score1Input.value.trim() : item.criteria.score1,
+          score0: score0Input ? score0Input.value.trim() : item.criteria.score0
+        },
+        note: noteInput ? noteInput.value.trim() : (item.note || ""),
+        systemControlled: item.systemControlled || false
+      };
+    });
+  };
+
+  // 空白チェック関数
+  const validateRubric = (rubric) => {
+    const errors = [];
+    rubric.forEach((item, index) => {
+      // システム自動判定の項目はスキップ
+      if (item.systemControlled) return;
+      
+      if (!item.criteria.score2) {
+        errors.push(`${index + 1}. ${item.name}: 2点の基準が空白です`);
+      }
+      if (!item.criteria.score1) {
+        errors.push(`${index + 1}. ${item.name}: 1点の基準が空白です`);
+      }
+      if (!item.criteria.score0) {
+        errors.push(`${index + 1}. ${item.name}: 0点の基準が空白です`);
+      }
+    });
+    return errors;
+  };
+
   // 保存処理
   const saveConfig = async () => {
-    statusSpan.textContent = "保存中...";
+    statusSpan.textContent = "検証中...";
     statusSpan.style.color = "#6b7280";
 
     try {
@@ -4183,24 +4225,18 @@ async function mountRubricPane() {
       }
 
       // フォームから値を収集
-      const rubric = DEFAULT_RUBRIC.map((item, index) => {
-        const score2Input = document.querySelector(`.rubric-score2[data-id="${item.id}"]`);
-        const score1Input = document.querySelector(`.rubric-score1[data-id="${item.id}"]`);
-        const score0Input = document.querySelector(`.rubric-score0[data-id="${item.id}"]`);
-        const noteInput = document.querySelector(`.rubric-note[data-id="${item.id}"]`);
-        
-        return {
-          id: item.id,
-          name: item.name,
-          criteria: {
-            score2: score2Input ? score2Input.value.trim() : item.criteria.score2,
-            score1: score1Input ? score1Input.value.trim() : item.criteria.score1,
-            score0: score0Input ? score0Input.value.trim() : item.criteria.score0
-          },
-          note: noteInput ? noteInput.value.trim() : (item.note || ""),
-          systemControlled: item.systemControlled || false
-        };
-      });
+      const rubric = collectRubricFromForm();
+
+      // 空白チェック
+      const errors = validateRubric(rubric);
+      if (errors.length > 0) {
+        statusSpan.textContent = "";
+        statusSpan.style.color = "#ef4444";
+        alert("以下の項目に空白があります。すべての採点基準を入力してください。\n\n" + errors.join("\n"));
+        return;
+      }
+
+      statusSpan.textContent = "保存中...";
 
       const res = await fetch('/api/admin/rubric/config', {
         method: "POST",
@@ -4264,9 +4300,130 @@ async function mountRubricPane() {
     }
   };
 
+  // エクスポート処理（ファイルに保存）
+  const exportConfig = () => {
+    try {
+      const rubric = collectRubricFromForm();
+      
+      // 日付をファイル名に含める
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+      const timeStr = now.toTimeString().slice(0, 5).replace(':', ''); // HHMM
+      const filename = `rubric_config_${dateStr}_${timeStr}.json`;
+      
+      // JSONとして整形
+      const exportData = {
+        exportedAt: now.toISOString(),
+        version: "1.0",
+        rubric: rubric
+      };
+      
+      const jsonStr = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      statusSpan.textContent = `✓ ${filename} に保存しました`;
+      statusSpan.style.color = "#10b981";
+      setTimeout(() => { statusSpan.textContent = ""; }, 3000);
+    } catch (err) {
+      console.error("Failed to export rubric config:", err);
+      statusSpan.textContent = "エクスポートエラー: " + err.message;
+      statusSpan.style.color = "#ef4444";
+    }
+  };
+
+  // インポート処理（ファイルから読込）
+  const importConfig = (file) => {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        const content = e.target.result;
+        const data = JSON.parse(content);
+        
+        // データ検証
+        let rubric = null;
+        if (data.rubric && Array.isArray(data.rubric) && data.rubric.length === 9) {
+          // 新形式（exportedAt, version, rubric）
+          rubric = data.rubric;
+        } else if (Array.isArray(data) && data.length === 9) {
+          // 旧形式（配列のみ）
+          rubric = data;
+        } else {
+          throw new Error("無効なファイル形式です。9項目のルーブリック設定が必要です。");
+        }
+        
+        // 各項目の検証
+        const requiredIds = DEFAULT_RUBRIC.map(r => r.id);
+        const importedIds = rubric.map(r => r.id);
+        const missingIds = requiredIds.filter(id => !importedIds.includes(id));
+        
+        if (missingIds.length > 0) {
+          throw new Error(`必要な項目が不足しています: ${missingIds.join(', ')}`);
+        }
+        
+        // 空白チェック
+        const errors = validateRubric(rubric);
+        if (errors.length > 0) {
+          if (!confirm("読み込んだファイルに空白の項目があります。\n\n" + errors.join("\n") + "\n\nそのまま読み込みますか？")) {
+            return;
+          }
+        }
+        
+        // フォームに反映
+        renderRubricEditor(rubric);
+        
+        const exportedAt = data.exportedAt ? new Date(data.exportedAt).toLocaleString('ja-JP') : '不明';
+        statusSpan.textContent = `✓ ファイルから読み込みました（エクスポート日時: ${exportedAt}）`;
+        statusSpan.style.color = "#10b981";
+        setTimeout(() => { statusSpan.textContent = "※まだ保存されていません。「ルーブリックを保存」を押してください。"; statusSpan.style.color = "#f59e0b"; }, 3000);
+      } catch (err) {
+        console.error("Failed to import rubric config:", err);
+        alert("ファイルの読み込みに失敗しました。\n\n" + err.message);
+        statusSpan.textContent = "インポートエラー: " + err.message;
+        statusSpan.style.color = "#ef4444";
+      }
+    };
+    
+    reader.onerror = () => {
+      alert("ファイルの読み込みに失敗しました。");
+      statusSpan.textContent = "ファイル読み込みエラー";
+      statusSpan.style.color = "#ef4444";
+    };
+    
+    reader.readAsText(file);
+  };
+
   // イベントリスナーを設定
   saveBtn.onclick = saveConfig;
   resetBtn.onclick = resetConfig;
+  
+  // エクスポート/インポートボタン
+  const exportBtn = $("exportRubricConfig");
+  const importBtn = $("importRubricConfig");
+  const fileInput = $("rubricFileInput");
+  
+  if (exportBtn) {
+    exportBtn.onclick = exportConfig;
+  }
+  
+  if (importBtn && fileInput) {
+    importBtn.onclick = () => fileInput.click();
+    fileInput.onchange = (e) => {
+      if (e.target.files && e.target.files[0]) {
+        importConfig(e.target.files[0]);
+        e.target.value = ''; // リセット（同じファイルを再選択可能に）
+      }
+    };
+  }
 
   // 初回読み込み
   await loadRubricConfig();
