@@ -2823,6 +2823,8 @@ app.post("/api/admin/patients", requireAuth, requireAdmin, async (req, res) => {
     // Version 3.42: 想定バイタル異常とカスタムバイタル項目を保存
     const expectedVitals = b.expectedVitals || null;
     const customVitals = b.customVitals || null;
+    // v4.40: 身体診察の異常所見設定を保存
+    const expectedExams = b.expectedExams || null;
 
     if (!name || !profile || !displayProfile || !symptomKeywords) {
       return res.status(400).json({ ok: false, error: "name, profile, displayProfile, and symptomKeywords are required" });
@@ -2855,6 +2857,7 @@ app.post("/api/admin/patients", requireAuth, requireAdmin, async (req, res) => {
       timeLimit,
       expectedVitals,
       customVitals,
+      expectedExams,
       videos,
       isAdminCreated,
       isPublic,
@@ -2925,6 +2928,8 @@ app.patch("/api/admin/patients/:id", requireAuth, requireAdmin, async (req, res)
     // Version 3.42: 想定バイタル異常とカスタムバイタル項目を更新
     const expectedVitals = (b.expectedVitals != null) ? b.expectedVitals : (cur.expectedVitals || null);
     const customVitals = (b.customVitals != null) ? b.customVitals : (cur.customVitals || null);
+    // v4.40: 身体診察の異常所見設定を更新
+    const expectedExams = (b.expectedExams != null) ? b.expectedExams : (cur.expectedExams || null);
 
     const patch = {
       name,
@@ -2940,6 +2945,7 @@ app.patch("/api/admin/patients/:id", requireAuth, requireAdmin, async (req, res)
       timeLimit,
       expectedVitals,
       customVitals,
+      expectedExams,
       updatedAt: Date.now(),
       updatedBy: { uid: req.user.uid, email: req.user.email || null }
     };
