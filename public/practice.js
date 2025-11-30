@@ -1283,7 +1283,7 @@ function selectPatient(patientId){
         </div>
       </div>
       <div class="section">
-        <div class="section-title">学生提示用プロフィール</div>
+        <div class="section-title">患者プロフィール</div>
         <div class="section-content">${hasDisplayProfile ? esc(p.displayProfile) : '<span style="color:#e74c3c; font-weight:500">⚠️ 未設定です。管理画面の「患者管理」から該当患者を編集し、「表示用患者プロフィール（学生向け）」を設定してください。</span>'}</div>
       </div>
       <div style="margin-top:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:6px 10px">
@@ -1472,7 +1472,7 @@ async function downloadPatientPdf(){
     </div>
   </div>
   <div class="section">
-    <div class="section-title">学生提示用プロフィール</div>
+    <div class="section-title">患者プロフィール</div>
     <div class="section-content">${p.displayProfile && p.displayProfile.trim() !== "" ? p.displayProfile : "⚠️ 未設定 - 管理画面で設定してください"}</div>
   </div>
   <script>
