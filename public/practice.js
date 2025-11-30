@@ -1499,6 +1499,8 @@ async function startWithSelectedPatient(){
   // Version 3.44: デバッグログ - 患者データのバイタル設定を確認
   console.log('[startWithSelectedPatient] Patient expected vitals:', p.expectedVitals);
   console.log('[startWithSelectedPatient] Patient custom vitals:', p.customVitals);
+  // v4.40: 身体診察の所見設定もログ出力
+  console.log('[startWithSelectedPatient] Patient expected exams:', p.expectedExams);
 
   // Version 3.06: 対話テキスト表示フラグを読み取り
   const showConversationTextCheckbox = $("showConversationText");
@@ -1514,7 +1516,8 @@ async function startWithSelectedPatient(){
   await startTalk({
     mode:"test",
     showConversationText: showConversationText,
-    patient:{ id:p.id, no:p.patientNo, name:p.name, expectedVitals:p.expectedVitals, customVitals:p.customVitals },
+    // v4.40: expectedExamsを追加
+    patient:{ id:p.id, no:p.patientNo, name:p.name, expectedVitals:p.expectedVitals, customVitals:p.customVitals, expectedExams:p.expectedExams },
     persona:{ name:p.name, ageBand:p.ageBand, gender:p.gender, language:p.language, brokenJapanese:brokenJapanese, profileSeed:p.profile },
     timeLimit: p.timeLimit || 180,
     selectedEvalItems: selectedItems  // Version 4.25: 評価項目選択
