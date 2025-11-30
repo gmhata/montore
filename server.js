@@ -2930,6 +2930,11 @@ app.patch("/api/admin/patients/:id", requireAuth, requireAdmin, async (req, res)
     const customVitals = (b.customVitals != null) ? b.customVitals : (cur.customVitals || null);
     // v4.40: 身体診察の異常所見設定を更新
     const expectedExams = (b.expectedExams != null) ? b.expectedExams : (cur.expectedExams || null);
+    
+    // v4.42: デバッグログ
+    console.log('[admin/patients PATCH] Received expectedExams:', b.expectedExams);
+    console.log('[admin/patients PATCH] Current expectedExams:', cur.expectedExams);
+    console.log('[admin/patients PATCH] Saving expectedExams:', expectedExams);
 
     const patch = {
       name,

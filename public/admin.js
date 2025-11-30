@@ -3204,12 +3204,16 @@ async function editAdminPatient(patientId, patientsList) {
   }
 
   // v4.31: 身体診察の異常所見をフォームに設定
+  // v4.42: デバッグログ追加
+  console.log('[editAdminPatient] expectedExams from patient:', patient.expectedExams);
   if (patient.expectedExams) {
+    console.log('[editAdminPatient] Setting exam checkboxes:', patient.expectedExams);
     if ($("pcExam_inspection")) $("pcExam_inspection").checked = !!patient.expectedExams.inspection;
     if ($("pcExam_palpation")) $("pcExam_palpation").checked = !!patient.expectedExams.palpation;
     if ($("pcExam_auscultation")) $("pcExam_auscultation").checked = !!patient.expectedExams.auscultation;
     if ($("pcExam_percussion")) $("pcExam_percussion").checked = !!patient.expectedExams.percussion;
   } else {
+    console.log('[editAdminPatient] No expectedExams, clearing checkboxes');
     // 設定がない場合はチェックを外す
     if ($("pcExam_inspection")) $("pcExam_inspection").checked = false;
     if ($("pcExam_palpation")) $("pcExam_palpation").checked = false;
@@ -3307,6 +3311,14 @@ async function updateAdminPatient(patientId) {
     auscultation: !!$("pcExam_auscultation")?.checked,
     percussion: !!$("pcExam_percussion")?.checked
   };
+  // v4.42: デバッグログ追加
+  console.log('[updateAdminPatient] Collected expectedExams:', expectedExams);
+  console.log('[updateAdminPatient] Checkbox elements:', {
+    inspection: $("pcExam_inspection"),
+    palpation: $("pcExam_palpation"),
+    auscultation: $("pcExam_auscultation"),
+    percussion: $("pcExam_percussion")
+  });
 
   // Version 3.46: カスタムバイタル項目を収集（デバッグログ追加）
   const customVitals = [];
