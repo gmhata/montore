@@ -2904,6 +2904,14 @@ async function loadAdminPatientList() {
     }
 
     const patients = result.patients || [];
+    
+    // v4.43: デバッグログ - 取得した患者データのexpectedExamsを確認
+    console.log('[loadAdminPatientList] Patients loaded:', patients.length);
+    patients.forEach(p => {
+      if (p.expectedExams) {
+        console.log(`[loadAdminPatientList] Patient ${p.name} expectedExams:`, p.expectedExams);
+      }
+    });
 
     if (patients.length === 0) {
       listArea.innerHTML = '<div class="muted">保存済み患者はまだありません</div>';
@@ -3066,6 +3074,20 @@ function showPatientDetailModal(patientId, patientsList) {
     ).join('');
   }
 
+  // v4.43: 身体診察の異常所見の表示
+  let examStatusHTML = '<div class="muted">すべて正常</div>';
+  if (patient.expectedExams) {
+    const exams = [];
+    if (patient.expectedExams.inspection) exams.push('👁️ 視診');
+    if (patient.expectedExams.palpation) exams.push('🤚 触診');
+    if (patient.expectedExams.auscultation) exams.push('🩺 聴診');
+    if (patient.expectedExams.percussion) exams.push('🔔 打診');
+    
+    if (exams.length > 0) {
+      examStatusHTML = exams.map(e => `<span style="display:inline-block; padding:4px 8px; background:#fee2e2; border-radius:4px; margin:2px; font-size:13px; color:#991b1b">${e} 異常あり</span>`).join('');
+    }
+  }
+
   const timeLimitSec = patient.timeLimit || 180;
   const timeLimitMin = Math.floor(timeLimitSec / 60);
   const timeLimitSecRem = timeLimitSec % 60;
@@ -3135,9 +3157,14 @@ function showPatientDetailModal(patientId, patientsList) {
       <div>${vitalStatusHTML}</div>
     </div>
 
-    <div style="margin-bottom:24px">
+    <div style="margin-bottom:16px">
       <div style="font-size:12px; color:#6b7280; margin-bottom:8px">カスタムバイタル項目</div>
       <div>${customVitalsHTML}</div>
+    </div>
+
+    <div style="margin-bottom:24px">
+      <div style="font-size:12px; color:#6b7280; margin-bottom:8px">身体診察の所見設定</div>
+      <div>${examStatusHTML}</div>
     </div>
 
     <div style="display:flex; gap:12px; justify-content:flex-end">
