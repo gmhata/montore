@@ -3176,18 +3176,36 @@ function renderReportHTML(analysis){
 
   // Version 4.25: 選択された評価項目を取得
   const selectedItems = window.__currentSelectedEvalItems || EVALUATION_ITEMS.map(item => item.id);
-  const selectedItemNames = selectedItems.map(id => {
-    const item = EVALUATION_ITEMS.find(e => e.id === id);
-    return item ? item.name : null;
-  }).filter(Boolean);
-  console.log('[renderReportHTML] Selected eval items:', selectedItems, 'Names:', selectedItemNames);
+  console.log('[renderReportHTML] Selected eval items (IDs):', selectedItems);
+
+  // v4.53: IDと名前のマッピング（名前の不一致問題を解決）
+  const evalItemIdToNames = {
+    intro: ["導入", "導入（名乗り/挨拶）"],
+    chief: ["主訴"],
+    opqrst: ["OPQRST"],
+    ros: ["ROS&RedFlag", "ROS & Red Flag", "ROS&Red Flag"],  // 複数の表記に対応
+    history: ["医療・生活歴"],
+    reason: ["受診契機"],
+    vitals: ["バイタル/現症"],
+    exam: ["身体診察"],
+    progress: ["進行"]
+  };
+
+  // 選択されたIDに対応する名前のリストを作成
+  const selectedNameSet = new Set();
+  selectedItems.forEach(id => {
+    const names = evalItemIdToNames[id];
+    if (names) names.forEach(n => selectedNameSet.add(n));
+  });
+  console.log('[renderReportHTML] Selected names set:', Array.from(selectedNameSet));
 
   let html = "";
 
   if (rows.length){
-    // Version 4.25: 選択された項目のみをスコア計算対象とする
+    // Version 4.25/4.53: 選択された項目のみをスコア計算対象とする（名前の表記揺れに対応）
     const selectedRows = rows.map(x => {
-      const isSelected = selectedItemNames.includes(x?.name);
+      const itemName = x?.name || "";
+      const isSelected = selectedNameSet.has(itemName);
       return { ...x, isSelected };
     });
     
@@ -3198,7 +3216,8 @@ function renderReportHTML(analysis){
     
     const head = `<tr><th style="width:48px">#</th><th style="width:180px">評価軸</th><th style="width:56px">点</th><th>コメント</th></tr>`;
     const body = rows.map((x,i)=>{
-      const isSelected = selectedItemNames.includes(x?.name);
+      const itemName = x?.name || "";
+      const isSelected = selectedNameSet.has(itemName);
       if (isSelected) {
         // 選択された項目: 通常表示
         return `
@@ -3475,6 +3494,19 @@ function renderHistoryDetailHTML(data, sessionId) {
   const selectedSet = selectedEvalItems ? new Set(selectedEvalItems) : null;
   const evalItemIds = ["intro", "chief", "opqrst", "ros", "history", "reason", "vitals", "exam", "progress"];
   
+  // v4.53: 名前からIDへのマッピング（名前の表記揺れに対応）
+  const nameToId = {
+    "導入": "intro", "導入（名乗り/挨拶）": "intro",
+    "主訴": "chief",
+    "OPQRST": "opqrst",
+    "ROS&RedFlag": "ros", "ROS & Red Flag": "ros", "ROS&Red Flag": "ros",
+    "医療・生活歴": "history",
+    "受診契機": "reason",
+    "バイタル/現症": "vitals",
+    "身体診察": "exam",
+    "進行": "progress"
+  };
+  
   let html = `<h4 style="margin:0 0 12px; color:#ec4899">問診スキル分析レポート</h4>`;
   html += `<div class="muted small" style="margin-bottom:12px">セッションID: ${esc(sessionId)}</div>`;
   
@@ -3494,8 +3526,9 @@ function renderHistoryDetailHTML(data, sessionId) {
     let totalMax = 0;
     
     rubric.forEach((item, i) => {
-      const itemId = evalItemIds[i];
-      const isSelected = !selectedSet || selectedSet.has(itemId);
+      // v4.53: インデックスベースまたは名前ベースでIDを取得
+      const itemId = evalItemIds[i] || nameToId[item.name] || null;
+      const isSelected = !selectedSet || (itemId && selectedSet.has(itemId));
       
       if (isSelected) {
         totalScore += item.score || 0;
