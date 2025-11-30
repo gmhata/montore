@@ -583,7 +583,7 @@
           <button id="btnLogout" class="secondary" style="display:none">ログアウト</button>
         </div>
       </div>
-      <div class="version-badge">version: 4.48</div>
+      <div class="version-badge">version: 4.49</div>
     </section>
 
     <!-- トップ -->
@@ -628,7 +628,7 @@
           </div>
         </div>
       </div>
-      <div class="version-badge">version: 4.48</div>
+      <div class="version-badge">version: 4.49</div>
     </section>
 
     <!-- 対話 -->
@@ -871,55 +871,57 @@
             <!-- バイタルサイン設定 -->
             <div style="margin:30px 0; padding:20px; background:#f9fafb; border-radius:8px">
               <h4 style="margin-bottom:16px; color:#ec4899">バイタルサインのキーワード設定</h4>
+              <p class="muted small" style="margin-bottom:16px">ℹ️ デフォルトキーワードは常に有効です。ここで追加したキーワードはデフォルトに追加されます。</p>
 
               <div class="keyword-config-item">
                 <label>体温:</label>
-                <input type="text" id="vital_temperature" placeholder="体温, 熱, temperature（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+                <input type="text" id="vital_temperature" placeholder="追加キーワード（デフォルト: 体温, 測ります, はかります）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
               </div>
 
               <div class="keyword-config-item">
                 <label>血圧:</label>
-                <input type="text" id="vital_bloodPressure" placeholder="血圧, blood pressure（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+                <input type="text" id="vital_bloodPressure" placeholder="追加キーワード（デフォルト: 血圧, けつあつ）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
               </div>
 
               <div class="keyword-config-item">
                 <label>脈拍:</label>
-                <input type="text" id="vital_pulse" placeholder="脈拍, 脈, pulse, heart rate（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+                <input type="text" id="vital_pulse" placeholder="追加キーワード（デフォルト: 脈拍, 心拍, 脈を測）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
               </div>
 
               <div class="keyword-config-item">
                 <label>呼吸数:</label>
-                <input type="text" id="vital_respiration" placeholder="呼吸, 呼吸数, respiratory（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+                <input type="text" id="vital_respiration" placeholder="追加キーワード（デフォルト: 呼吸, 呼吸数）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
               </div>
 
               <div class="keyword-config-item">
                 <label>酸素飽和度:</label>
-                <input type="text" id="vital_spo2" placeholder="spo2, 酸素飽和度, 酸素, oxygen（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+                <input type="text" id="vital_spo2" placeholder="追加キーワード（デフォルト: 酸素, spo2, サチュレーション）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
               </div>
             </div>
 
             <!-- 身体診察設定 -->
             <div style="margin:30px 0; padding:20px; background:#f0f9ff; border-radius:8px">
               <h4 style="margin-bottom:16px; color:#0ea5e9">身体診察のキーワード設定</h4>
+              <p class="muted small" style="margin-bottom:16px">ℹ️ デフォルトキーワードは常に有効です。ここで追加したキーワードはデフォルトに追加されます。</p>
 
               <div class="keyword-config-item">
                 <label>視診:</label>
-                <input type="text" id="exam_inspection" placeholder="視診, 見, inspection, look（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+                <input type="text" id="exam_inspection" placeholder="追加キーワード（デフォルト: 視診, 見せて, 拝見, 診ます）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
               </div>
 
               <div class="keyword-config-item">
                 <label>触診:</label>
-                <input type="text" id="exam_palpation" placeholder="触診, 触, palpation, touch（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+                <input type="text" id="exam_palpation" placeholder="追加キーワード（デフォルト: 触診, 触ります, お腹, 腹部）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
               </div>
 
               <div class="keyword-config-item">
                 <label>聴診:</label>
-                <input type="text" id="exam_auscultation" placeholder="聴診, 聴, auscultation, listen（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+                <input type="text" id="exam_auscultation" placeholder="追加キーワード（デフォルト: 聴診, 聴診器, 胸の音, 心音）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
               </div>
 
               <div class="keyword-config-item">
                 <label>打診:</label>
-                <input type="text" id="exam_percussion" placeholder="打診, 叩, percussion（カンマ区切り）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
+                <input type="text" id="exam_percussion" placeholder="追加キーワード（デフォルト: 打診, 叩いて, 叩きます）" style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px">
               </div>
             </div>
 
