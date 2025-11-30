@@ -47,6 +47,19 @@ const APP_VERSION      = process.env.APP_VERSION || "dev";
 const ASSETS_BUCKET    = process.env.ASSETS_BUCKET || ""; // 動画保管先（GCS バケット名）
 const RECORDINGS_BUCKET = process.env.RECORDINGS_BUCKET || ASSETS_BUCKET || ""; // 音声録音保管先
 
+/* ============ デフォルト評価ルーブリック ============ */
+const DEFAULT_RUBRIC = [
+  { id: "intro", name: "導入（名乗り/挨拶）", criteria: { score2: "氏名を名乗り、役割を伝え、患者の氏名・年齢を確認した", score1: "挨拶または氏名確認のいずれか一方のみ実施", score0: "導入なし、または挨拶・氏名確認ともに未実施" }, note: "「お名前」「名前」「氏名」はすべて同じ意味として扱う。「お名前を教えてください」「お名前は？」等の質問で患者が名前を答えた場合は、氏名確認ができたと判定する。" },
+  { id: "chief", name: "主訴", criteria: { score2: "「今日はどうされましたか」等の開放質問で主訴を聴取し、内容を復唱または確認した", score1: "主訴を聴取したが、確認・復唱なし、または閉鎖質問のみ", score0: "主訴の聴取なし" }, note: "" },
+  { id: "opqrst", name: "OPQRST", criteria: { score2: "OPQRST（発症時期・増悪/寛解因子・性状・放散痛・程度・時間経過）のうち5項目以上を聴取", score1: "OPQRSTのうち2〜4項目を聴取", score0: "OPQRST項目の聴取が1項目以下" }, note: "" },
+  { id: "ros", name: "ROS & Red Flag", criteria: { score2: "随伴症状を複数聴取し、重篤な疾患の危険信号（呼吸困難・意識障害・胸痛放散等）を確認", score1: "随伴症状の聴取はあるが、Red Flagの確認が不十分", score0: "随伴症状・Red Flagともに未確認" }, note: "" },
+  { id: "history", name: "医療・生活歴", criteria: { score2: "既往歴・内服薬・アレルギー歴・喫煙/飲酒歴のうち3項目以上を聴取", score1: "上記のうち1〜2項目を聴取", score0: "医療歴・生活歴の聴取なし" }, note: "" },
+  { id: "reason", name: "受診契機", criteria: { score2: "「なぜ今日受診されたのですか」等で受診理由・きっかけを明確に聴取", score1: "受診契機に触れたが、詳細な確認なし", score0: "受診契機の聴取なし" }, note: "" },
+  { id: "vitals", name: "バイタル/現症", criteria: { score2: "システム上で「実施する」を選択して測定を行った", score1: "（この項目は1点評価なし）", score0: "システム上で「実施する」を選択していない" }, note: "この項目は会話内容ではなく、システムの操作記録で自動判定されます。", systemControlled: true },
+  { id: "exam", name: "身体診察", criteria: { score2: "システム上で「実施する」を選択して診察を行った", score1: "（この項目は1点評価なし）", score0: "システム上で「実施する」を選択していない" }, note: "この項目は会話内容ではなく、システムの操作記録で自動判定されます。", systemControlled: true },
+  { id: "progress", name: "進行", criteria: { score2: "論理的な順序で情報収集し、患者の訴えに応じて柔軟に質問を展開", score1: "情報収集の順序に一部不自然さがある、または硬直的な質問", score0: "情報収集の流れが不適切、または極端に短時間で終了" }, note: "" }
+];
+
 /* ============ 起動時エラーハンドラ ============ */
 process.on("uncaughtException", (e) => console.error("[uncaughtException]", e));
 process.on("unhandledRejection", (e) => console.error("[unhandledRejection]", e));
@@ -498,13 +511,27 @@ app.post("/api/sessions/:id/finish", requireAuth, async (req, res) => {
 
 let report = null;
 if (OPENAI_API_KEY && messages.length) {
+  // v4.51: Firestoreからルーブリック設定を読み込む
+  let rubricConfig = DEFAULT_RUBRIC;
+  try {
+    const rubricDoc = await db.collection("systemConfigs").doc("rubric").get();
+    if (rubricDoc.exists && rubricDoc.data()?.rubric?.length === 9) {
+      rubricConfig = rubricDoc.data().rubric;
+      console.log(`[finish] Using custom rubric config from Firestore`);
+    } else {
+      console.log(`[finish] Using default rubric config`);
+    }
+  } catch (e) {
+    console.warn(`[finish] Failed to load rubric config, using default:`, e?.message);
+  }
+
   // Version 4.28: 評価項目IDと名前のマッピング（プロンプト生成用）
   const evalItemIdToName = {
     intro: "導入", chief: "主訴", opqrst: "OPQRST", ros: "ROS&RedFlag",
     history: "医療・生活歴", reason: "受診契機", vitals: "バイタル/現症",
     exam: "身体診察", progress: "進行"
   };
-  const allItemNames = ["導入","主訴","OPQRST","ROS&RedFlag","医療・生活歴","受診契機","バイタル/現症","身体診察","進行"];
+  const allItemNames = rubricConfig.map(r => r.name.split('（')[0]);
   const selectedItemNames = selectedEvalItems 
     ? selectedEvalItems.map(id => evalItemIdToName[id]).filter(Boolean)
     : allItemNames;
@@ -527,73 +554,61 @@ if (OPENAI_API_KEY && messages.length) {
     ? ''
     : `\n- 【重要】改善点は、評価対象項目（${selectedItemNames.join('、')}）についてのみ記載してください。評価対象外の項目（${unselectedItemNames.join('、')}）については改善点として言及しないでください。`;
 
+  // v4.51: ルーブリック設定から評価項目リストを動的生成
+  const rubricItemsList = rubricConfig.map((r, i) => `${i + 1}) ${r.name}`).join('\n');
+
+  // v4.51: 各項目の詳細ルーブリックを動的生成
+  const rubricCriteriaText = rubricConfig.map((r, i) => {
+    const isVitals = r.id === 'vitals';
+    const isExam = r.id === 'exam';
+    
+    if (isVitals) {
+      return `${i + 1}) ${r.name}
+  - 【この項目は会話内容ではなく、システムの操作記録で判定済み】
+  - 判定結果: ${vitalChecked ? '実施済み（2点）' : '未実施（0点）'}
+  - ※${r.note || '会話でバイタル測定に言及していても、システム上で「実施する」を選択していなければ未実施と判定されます'}`;
+    }
+    
+    if (isExam) {
+      return `${i + 1}) ${r.name}
+  - 【この項目は会話内容ではなく、システムの操作記録で判定済み】
+  - 判定結果: ${examChecked ? '実施済み（2点）' : '未実施（0点）'}
+  - ※${r.note || '会話で身体診察に言及していても、システム上で「実施する」を選択していなければ未実施と判定されます'}`;
+    }
+    
+    let text = `${i + 1}) ${r.name}
+  - 2点: ${r.criteria.score2}
+  - 1点: ${r.criteria.score1}
+  - 0点: ${r.criteria.score0}`;
+    
+    if (r.note) {
+      text += `\n  - 【重要】${r.note}`;
+    }
+    
+    return text;
+  }).join('\n\n');
+
+  // v4.51: 出力JSONのルーブリック配列を動的生成
+  const rubricOutputFormat = rubricConfig.map(r => {
+    const shortName = r.name.split('（')[0];
+    return `{"name":"${shortName}","score":0,"comment":"..."}`;
+  }).join(',\n      ');
+
   const system = `あなたは看護教育の採点官です。会話ログ（看護師/患者）を読み、
 下の9項目で 0/1/2 点の三段階で評価し、短いコメントを日本語で作成してください。
 必ず JSON だけを返し、余計な文章は出力しないこと。
 ${selectedItemsInfo}
 
 評価項目（順に配列で出力）:
-1) 導入（名乗り/挨拶）
-2) 主訴
-3) OPQRST
-4) ROS & Red Flag
-5) 医療・生活歴
-6) 受診契機
-7) バイタル/現症
-8) 身体診察
-9) 進行
+${rubricItemsList}
 
 採点基準（各項目の詳細ルーブリック）:
 
-1) 導入（名乗り/挨拶）
-  - 2点: 氏名を名乗り、役割を伝え、患者の氏名・年齢を確認した
-  - 1点: 挨拶または氏名確認のいずれか一方のみ実施
-  - 0点: 導入なし、または挨拶・氏名確認ともに未実施
-  - 【重要】「お名前」「名前」「氏名」はすべて同じ意味として扱う。「お名前を教えてください」「お名前は？」等の質問で患者が名前を答えた場合は、氏名確認ができたと判定する。
-
-2) 主訴
-  - 2点: 「今日はどうされましたか」等の開放質問で主訴を聴取し、内容を復唱または確認した
-  - 1点: 主訴を聴取したが、確認・復唱なし、または閉鎖質問のみ
-  - 0点: 主訴の聴取なし
-
-3) OPQRST
-  - 2点: OPQRST（発症時期・増悪/寛解因子・性状・放散痛・程度・時間経過）のうち5項目以上を聴取
-  - 1点: OPQRSTのうち2〜4項目を聴取
-  - 0点: OPQRST項目の聴取が1項目以下
-
-4) ROS & Red Flag
-  - 2点: 随伴症状を複数聴取し、重篤な疾患の危険信号（呼吸困難・意識障害・胸痛放散等）を確認
-  - 1点: 随伴症状の聴取はあるが、Red Flagの確認が不十分
-  - 0点: 随伴症状・Red Flagともに未確認
-
-5) 医療・生活歴
-  - 2点: 既往歴・内服薬・アレルギー歴・喫煙/飲酒歴のうち3項目以上を聴取
-  - 1点: 上記のうち1〜2項目を聴取
-  - 0点: 医療歴・生活歴の聴取なし
-
-6) 受診契機
-  - 2点: 「なぜ今日受診されたのですか」等で受診理由・きっかけを明確に聴取
-  - 1点: 受診契機に触れたが、詳細な確認なし
-  - 0点: 受診契機の聴取なし
-
-7) バイタル/現症
-  - 【この項目は会話内容ではなく、システムの操作記録で判定済み】
-  - 判定結果: ${vitalChecked ? '実施済み（2点）' : '未実施（0点）'}
-  - ※会話でバイタル測定に言及していても、システム上で「実施する」を選択していなければ未実施と判定されます
-
-8) 身体診察
-  - 【この項目は会話内容ではなく、システムの操作記録で判定済み】
-  - 判定結果: ${examChecked ? '実施済み（2点）' : '未実施（0点）'}
-  - ※会話で身体診察に言及していても、システム上で「実施する」を選択していなければ未実施と判定されます
-
-9) 進行
-  - 2点: 論理的な順序で情報収集し、患者の訴えに応じて柔軟に質問を展開
-  - 1点: 情報収集の順序に一部不自然さがある、または硬直的な質問
-  - 0点: 情報収集の流れが不適切、または極端に短時間で終了
+${rubricCriteriaText}
 
 summary（総評）の作成ルール（厳守）:
 - 日本語の「です・ます調」。2〜3文、合計180〜250文字に収める。${summaryExtraRule}
-- 会話ログの事実に基づく具体的な観察を少なくとも3点含める（例:「氏名確認なし」「OPQRSTの“増悪/寛解”未確認」「胸痛の随伴症状を未質問」等）。
+- 会話ログの事実に基づく具体的な観察を少なくとも3点含める（例:「氏名確認なし」「OPQRSTの"増悪/寛解"未確認」「胸痛の随伴症状を未質問」等）。
 - あいまい語の禁止（例:「全体的に」「だいたい」「不十分」「もっと」「気をつけたい」など）。具体的な名詞・動詞で記述する。
 - 新しい事実の創作は禁止。必要に応じて看護師/患者の発言を短く「」で引用してよい。
 - 批判は簡潔にし、最後は次回に向けた励ましの1文で締める。
@@ -614,15 +629,7 @@ ${improvementsExtraRule}
 {
   "report": {
     "rubric": [
-      {"name":"導入","score":0,"comment":"..."},
-      {"name":"主訴","score":0,"comment":"..."},
-      {"name":"OPQRST","score":0,"comment":"..."},
-      {"name":"ROS&RedFlag","score":0,"comment":"..."},
-      {"name":"医療・生活歴","score":0,"comment":"..."},
-      {"name":"受診契機","score":0,"comment":"..."},
-      {"name":"バイタル/現症","score":0,"comment":"..."},
-      {"name":"身体診察","score":0,"comment":"..."},
-      {"name":"進行","score":0,"comment":"..."}
+      ${rubricOutputFormat}
     ],
     "summary":"（180〜250文字、具体的観察3点以上、最後は励ましで締める）",
     "positives":["...","...","..."],
@@ -2479,6 +2486,67 @@ app.post("/api/admin/scenarios/:scenarioId/config", requireAuth, requireAdmin, a
 
     res.json({ ok:true, config });
   }catch(e){ res.status(500).json({ ok:false, error:String(e?.message||e) }); }
+});
+
+/* ====================== 評価ルーブリック設定 (v4.51) ====================== */
+
+// ルーブリック設定取得（管理者のみ）
+app.get("/api/admin/rubric/config", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ ok: false, error: "db not ready" });
+    
+    const doc = await db.collection("systemConfigs").doc("rubric").get();
+    if (!doc.exists) {
+      return res.json({ ok: true, rubric: null }); // デフォルトを使用
+    }
+    
+    const data = doc.data();
+    res.json({ ok: true, rubric: data.rubric || null });
+  } catch (e) {
+    console.error('[rubric/config GET] Error:', e);
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// ルーブリック設定保存（管理者のみ）
+app.post("/api/admin/rubric/config", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ ok: false, error: "db not ready" });
+    
+    const { rubric } = req.body;
+    if (!rubric || !Array.isArray(rubric) || rubric.length !== 9) {
+      return res.status(400).json({ ok: false, error: "Invalid rubric data: must be array of 9 items" });
+    }
+    
+    const config = {
+      rubric: rubric,
+      updatedAt: Date.now(),
+      updatedBy: { uid: req.user?.uid || null, email: req.user?.email || null }
+    };
+    
+    await db.collection("systemConfigs").doc("rubric").set(config, { merge: true });
+    console.log('[rubric/config POST] Saved rubric config');
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[rubric/config POST] Error:', e);
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+// ルーブリック設定削除（デフォルトに戻す）
+app.delete("/api/admin/rubric/config", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ ok: false, error: "db not ready" });
+    
+    await db.collection("systemConfigs").doc("rubric").delete();
+    console.log('[rubric/config DELETE] Reset to default');
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[rubric/config DELETE] Error:', e);
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
 });
 
 /* ====================== 患者設定 ====================== */

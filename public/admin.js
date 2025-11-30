@@ -35,7 +35,7 @@ function escapeCSV(value) {
 }
 
 function showPane(id){
-  const ids = ["pane-settings","pane-users","pane-patient-creation","pane-stats","pane-user-results","pane-scenarios","pane-analysis","pane-ai-analysis"];
+  const ids = ["pane-settings","pane-users","pane-patient-creation","pane-stats","pane-user-results","pane-scenarios","pane-rubric","pane-analysis","pane-ai-analysis"];
   for(const pid of ids){
     const el = $(pid); if (!el) continue;
     el.style.display = (pid===id) ? "" : "none";
@@ -61,6 +61,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
       if (target === "pane-stats")               mountLearningPane();
       if (target === "pane-user-results")        mountUserResultsPane();
       if (target === "pane-scenarios")           mountScenariosPane();
+      if (target === "pane-rubric")              mountRubricPane();
       if (target === "pane-analysis")            mountAnalysisPane();
       if (target === "pane-ai-analysis")         mountAIAnalysisPane();
     });
@@ -3976,3 +3977,297 @@ function renderAdminReportHTML(data) {
   return html;
 }
 
+
+/* ====================== 評価ルーブリック管理 (v4.51) ====================== */
+
+// デフォルトのルーブリック定義
+const DEFAULT_RUBRIC = [
+  {
+    id: "intro",
+    name: "導入（名乗り/挨拶）",
+    criteria: {
+      score2: "氏名を名乗り、役割を伝え、患者の氏名・年齢を確認した",
+      score1: "挨拶または氏名確認のいずれか一方のみ実施",
+      score0: "導入なし、または挨拶・氏名確認ともに未実施"
+    },
+    note: "「お名前」「名前」「氏名」はすべて同じ意味として扱う。「お名前を教えてください」「お名前は？」等の質問で患者が名前を答えた場合は、氏名確認ができたと判定する。"
+  },
+  {
+    id: "chief",
+    name: "主訴",
+    criteria: {
+      score2: "「今日はどうされましたか」等の開放質問で主訴を聴取し、内容を復唱または確認した",
+      score1: "主訴を聴取したが、確認・復唱なし、または閉鎖質問のみ",
+      score0: "主訴の聴取なし"
+    },
+    note: ""
+  },
+  {
+    id: "opqrst",
+    name: "OPQRST",
+    criteria: {
+      score2: "OPQRST（発症時期・増悪/寛解因子・性状・放散痛・程度・時間経過）のうち5項目以上を聴取",
+      score1: "OPQRSTのうち2〜4項目を聴取",
+      score0: "OPQRST項目の聴取が1項目以下"
+    },
+    note: ""
+  },
+  {
+    id: "ros",
+    name: "ROS & Red Flag",
+    criteria: {
+      score2: "随伴症状を複数聴取し、重篤な疾患の危険信号（呼吸困難・意識障害・胸痛放散等）を確認",
+      score1: "随伴症状の聴取はあるが、Red Flagの確認が不十分",
+      score0: "随伴症状・Red Flagともに未確認"
+    },
+    note: ""
+  },
+  {
+    id: "history",
+    name: "医療・生活歴",
+    criteria: {
+      score2: "既往歴・内服薬・アレルギー歴・喫煙/飲酒歴のうち3項目以上を聴取",
+      score1: "上記のうち1〜2項目を聴取",
+      score0: "医療歴・生活歴の聴取なし"
+    },
+    note: ""
+  },
+  {
+    id: "reason",
+    name: "受診契機",
+    criteria: {
+      score2: "「なぜ今日受診されたのですか」等で受診理由・きっかけを明確に聴取",
+      score1: "受診契機に触れたが、詳細な確認なし",
+      score0: "受診契機の聴取なし"
+    },
+    note: ""
+  },
+  {
+    id: "vitals",
+    name: "バイタル/現症",
+    criteria: {
+      score2: "システム上で「実施する」を選択して測定を行った",
+      score1: "（この項目は1点評価なし）",
+      score0: "システム上で「実施する」を選択していない"
+    },
+    note: "この項目は会話内容ではなく、システムの操作記録で自動判定されます。会話でバイタル測定に言及していても、システム上で「実施する」を選択していなければ未実施と判定されます。",
+    systemControlled: true
+  },
+  {
+    id: "exam",
+    name: "身体診察",
+    criteria: {
+      score2: "システム上で「実施する」を選択して診察を行った",
+      score1: "（この項目は1点評価なし）",
+      score0: "システム上で「実施する」を選択していない"
+    },
+    note: "この項目は会話内容ではなく、システムの操作記録で自動判定されます。会話で身体診察に言及していても、システム上で「実施する」を選択していなければ未実施と判定されます。",
+    systemControlled: true
+  },
+  {
+    id: "progress",
+    name: "進行",
+    criteria: {
+      score2: "論理的な順序で情報収集し、患者の訴えに応じて柔軟に質問を展開",
+      score1: "情報収集の順序に一部不自然さがある、または硬直的な質問",
+      score0: "情報収集の流れが不適切、または極端に短時間で終了"
+    },
+    note: ""
+  }
+];
+
+async function mountRubricPane() {
+  const editArea = $("rubricEditArea");
+  const saveBtn = $("saveRubricConfig");
+  const resetBtn = $("resetRubricConfig");
+  const statusSpan = $("rubricConfigStatus");
+  
+  if (!editArea || !saveBtn || !resetBtn) return;
+
+  // ルーブリック設定を読み込む
+  const loadRubricConfig = async () => {
+    editArea.innerHTML = '<div class="muted">読み込み中...</div>';
+    
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        editArea.innerHTML = '<div class="err">認証エラー</div>';
+        return;
+      }
+
+      const res = await fetch('/api/admin/rubric/config', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      // 設定があればその値を、なければデフォルトを使用
+      const rubric = (data.ok && data.rubric && data.rubric.length === 9) ? data.rubric : DEFAULT_RUBRIC;
+      
+      renderRubricEditor(rubric);
+      statusSpan.textContent = "";
+    } catch (err) {
+      console.error("Failed to load rubric config:", err);
+      // エラー時もデフォルトを表示
+      renderRubricEditor(DEFAULT_RUBRIC);
+      statusSpan.textContent = "（デフォルト設定を表示中）";
+      statusSpan.style.color = "#6b7280";
+    }
+  };
+
+  // ルーブリックエディタを描画
+  const renderRubricEditor = (rubric) => {
+    let html = '';
+    
+    rubric.forEach((item, index) => {
+      const isSystemControlled = item.systemControlled === true;
+      const bgColor = isSystemControlled ? '#fef3c7' : '#f9fafb';
+      const borderColor = isSystemControlled ? '#fbbf24' : '#e5e7eb';
+      
+      html += `
+        <div class="rubric-item" data-index="${index}" style="padding:16px; background:${bgColor}; border:1px solid ${borderColor}; border-radius:8px">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+            <h4 style="margin:0; color:#374151">${index + 1}. ${esc(item.name)}</h4>
+            ${isSystemControlled ? '<span style="font-size:11px; background:#f59e0b; color:white; padding:2px 8px; border-radius:4px">システム自動判定</span>' : ''}
+          </div>
+          
+          <div style="display:flex; flex-direction:column; gap:8px">
+            <div>
+              <label style="font-size:12px; font-weight:600; color:#059669">2点:</label>
+              <input type="text" class="rubric-score2" data-id="${item.id}" value="${esc(item.criteria.score2)}" 
+                style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; margin-top:4px" ${isSystemControlled ? 'disabled' : ''}>
+            </div>
+            <div>
+              <label style="font-size:12px; font-weight:600; color:#eab308">1点:</label>
+              <input type="text" class="rubric-score1" data-id="${item.id}" value="${esc(item.criteria.score1)}" 
+                style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; margin-top:4px" ${isSystemControlled ? 'disabled' : ''}>
+            </div>
+            <div>
+              <label style="font-size:12px; font-weight:600; color:#dc2626">0点:</label>
+              <input type="text" class="rubric-score0" data-id="${item.id}" value="${esc(item.criteria.score0)}" 
+                style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; margin-top:4px" ${isSystemControlled ? 'disabled' : ''}>
+            </div>
+            ${item.note ? `
+              <div style="margin-top:8px">
+                <label style="font-size:12px; font-weight:600; color:#6b7280">補足:</label>
+                <textarea class="rubric-note" data-id="${item.id}" rows="2" 
+                  style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; margin-top:4px; resize:vertical" ${isSystemControlled ? 'disabled' : ''}>${esc(item.note)}</textarea>
+              </div>
+            ` : `
+              <div style="margin-top:8px">
+                <label style="font-size:12px; font-weight:600; color:#6b7280">補足（任意）:</label>
+                <textarea class="rubric-note" data-id="${item.id}" rows="2" placeholder="評価時の補足説明を入力（任意）"
+                  style="width:100%; padding:8px; border:1px solid #d1d5db; border-radius:4px; margin-top:4px; resize:vertical"></textarea>
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    });
+    
+    editArea.innerHTML = html;
+  };
+
+  // 保存処理
+  const saveConfig = async () => {
+    statusSpan.textContent = "保存中...";
+    statusSpan.style.color = "#6b7280";
+
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        statusSpan.textContent = "認証エラー";
+        statusSpan.style.color = "#ef4444";
+        return;
+      }
+
+      // フォームから値を収集
+      const rubric = DEFAULT_RUBRIC.map((item, index) => {
+        const score2Input = document.querySelector(`.rubric-score2[data-id="${item.id}"]`);
+        const score1Input = document.querySelector(`.rubric-score1[data-id="${item.id}"]`);
+        const score0Input = document.querySelector(`.rubric-score0[data-id="${item.id}"]`);
+        const noteInput = document.querySelector(`.rubric-note[data-id="${item.id}"]`);
+        
+        return {
+          id: item.id,
+          name: item.name,
+          criteria: {
+            score2: score2Input ? score2Input.value.trim() : item.criteria.score2,
+            score1: score1Input ? score1Input.value.trim() : item.criteria.score1,
+            score0: score0Input ? score0Input.value.trim() : item.criteria.score0
+          },
+          note: noteInput ? noteInput.value.trim() : (item.note || ""),
+          systemControlled: item.systemControlled || false
+        };
+      });
+
+      const res = await fetch('/api/admin/rubric/config', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ rubric })
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (data.ok) {
+        statusSpan.textContent = "✓ 保存しました";
+        statusSpan.style.color = "#10b981";
+        setTimeout(() => { statusSpan.textContent = ""; }, 3000);
+      } else {
+        throw new Error(data.error || "保存に失敗しました");
+      }
+    } catch (err) {
+      console.error("Failed to save rubric config:", err);
+      statusSpan.textContent = "保存エラー: " + err.message;
+      statusSpan.style.color = "#ef4444";
+    }
+  };
+
+  // デフォルトに戻す処理
+  const resetConfig = async () => {
+    if (!confirm("ルーブリック設定をデフォルトに戻しますか？\n現在の設定は削除されます。")) {
+      return;
+    }
+    
+    statusSpan.textContent = "リセット中...";
+    statusSpan.style.color = "#6b7280";
+
+    try {
+      const token = await getIdToken();
+      if (!token) {
+        statusSpan.textContent = "認証エラー";
+        statusSpan.style.color = "#ef4444";
+        return;
+      }
+
+      const res = await fetch('/api/admin/rubric/config', {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      
+      // デフォルトを再表示
+      renderRubricEditor(DEFAULT_RUBRIC);
+      statusSpan.textContent = "✓ デフォルトに戻しました";
+      statusSpan.style.color = "#10b981";
+      setTimeout(() => { statusSpan.textContent = ""; }, 3000);
+    } catch (err) {
+      console.error("Failed to reset rubric config:", err);
+      statusSpan.textContent = "リセットエラー: " + err.message;
+      statusSpan.style.color = "#ef4444";
+    }
+  };
+
+  // イベントリスナーを設定
+  saveBtn.onclick = saveConfig;
+  resetBtn.onclick = resetConfig;
+
+  // 初回読み込み
+  await loadRubricConfig();
+}
