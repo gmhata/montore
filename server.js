@@ -2527,7 +2527,8 @@ app.get("/api/test-patients", requireAuth, async (_req, res)=>{
         timeLimit: p.timeLimit || 180, 
         videos: p.videos || {},
         expectedVitals: p.expectedVitals || null,
-        customVitals: p.customVitals || null
+        customVitals: p.customVitals || null,
+        expectedExams: p.expectedExams || null  // v4.44: 身体診察の異常所見設定を追加
       };
     })
     .filter(p => p !== null) // nullを除外
