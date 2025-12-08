@@ -1460,7 +1460,7 @@ function calculateGlobalTextMiningStats(students) {
   // ヒストグラム用のデータ配列
   const openQuestionRatios = [];
   const empathyWordsCounts = [];
-  const opqrstRates = [];
+  const oldcartRates = [];
 
   // 全体の単語頻度を集計
   const nurseWordFreq = {};
@@ -1472,7 +1472,7 @@ function calculateGlobalTextMiningStats(students) {
     if (s.nurse) {
       openQuestionRatios.push(s.nurse.openQuestionRatio || 0);
       empathyWordsCounts.push(s.nurse.empathyWords || 0);
-      opqrstRates.push(s.nurse.opqrstCoverageRate || 0);
+      oldcartRates.push(s.nurse.oldcartCoverageRate || 0);
 
       // 看護師の単語頻度を集計
       if (Array.isArray(s.nurse.topWords)) {
@@ -1532,7 +1532,7 @@ function calculateGlobalTextMiningStats(students) {
     { label: '16+', min: 16, max: 99999 }
   ]);
 
-  const opqrstHistogram = createHistogram(opqrstRates, [
+  const oldcartHistogram = createHistogram(oldcartRates, [
     { label: '0-20%', min: 0, max: 20 },
     { label: '20-40%', min: 20, max: 40 },
     { label: '40-60%', min: 40, max: 60 },
@@ -1592,7 +1592,7 @@ function calculateGlobalTextMiningStats(students) {
   return {
     openQuestionHistogram,
     empathyWordsHistogram,
-    opqrstHistogram,
+    oldcartHistogram,
     nurseTopWords: getTop20(nurseWordFreq),
     patientTopWords: getTop20(patientWordFreq),
     nurseUtteranceClusters: clusterUtterances(nurseUtterances),
@@ -1673,7 +1673,7 @@ function renderTextMiningAnalysis(container, students, globalStats) {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px; margin-top:12px">
         ${renderHistogram(globalStats.openQuestionHistogram || [], '開放質問比率の分布', '#4f46e5')}
         ${renderHistogram(globalStats.empathyWordsHistogram || [], '共感語使用の分布', '#0891b2')}
-        ${renderHistogram(globalStats.opqrstHistogram || [], 'OPQRST網羅率の分布', '#059669')}
+        ${renderHistogram(globalStats.oldcartHistogram || [], 'OLDCART網羅率の分布', '#059669')}
       </div>
     </div>
 
@@ -1695,7 +1695,7 @@ function renderTextMiningAnalysis(container, students, globalStats) {
             <tr>
               <th style="background:#eef2ff">開放質問比率</th>
               <th style="background:#eef2ff">共感語</th>
-              <th style="background:#eef2ff">OPQRST網羅率</th>
+              <th style="background:#eef2ff">OLDCART網羅率</th>
               <th style="background:#eef2ff">平均発話長</th>
               <th style="background:#eef2ff">総発言数</th>
               <th style="background:#fef3c7">平均発話長</th>
@@ -1807,7 +1807,7 @@ function renderTextMiningAnalysis(container, students, globalStats) {
       <strong>用語説明:</strong><br>
       • <strong>開放質問比率</strong>: 「どのように」「何が」などの開放質問の割合<br>
       • <strong>共感語</strong>: 「つらい」「大変」などの共感表現の使用回数<br>
-      • <strong>OPQRST網羅率</strong>: 発症時期・緩和因子・性質・放散・重症度・時間の確認率<br>
+      • <strong>OLDCART網羅率</strong>: 発症・部位・持続時間・性状・増悪/緩和因子・放散・時間/治療の確認率<br>
       • <strong>平均発話長</strong>: 1回の発言の平均文字数<br>
       • <strong>頻出語</strong>: 全学生の対話で最も多く使われた単語<br>
       • <strong>語の組み合わせ</strong>: 2つの語が連続して現れるパターン<br>
@@ -1829,7 +1829,7 @@ function renderTextMiningRow(s) {
     return 'style="background:#fee2e2;color:#991b1b"';
   };
 
-  const getOpqrstClass = (rate) => {
+  const getOldcartClass = (rate) => {
     if (rate >= 80) return 'style="background:#d1fae5;color:#065f46"';
     if (rate >= 50) return 'style="background:#fef3c7;color:#92400e"';
     return 'style="background:#fee2e2;color:#991b1b"';
@@ -1842,7 +1842,7 @@ function renderTextMiningRow(s) {
       <td>${s.sessionCount || 0}</td>
       <td ${getOpenQuestionClass(nurse.openQuestionRatio || 0)}>${nurse.openQuestionRatio || 0}%</td>
       <td>${nurse.empathyWords || 0}</td>
-      <td ${getOpqrstClass(nurse.opqrstCoverageRate || 0)}>${nurse.opqrstCoverageRate || 0}%</td>
+      <td ${getOldcartClass(nurse.oldcartCoverageRate || 0)}>${nurse.oldcartCoverageRate || 0}%</td>
       <td>${nurse.avgLength || 0}</td>
       <td>${nurse.totalMessages || 0}</td>
       <td>${patient.avgLength || 0}</td>
@@ -3941,7 +3941,7 @@ function renderAdminReportHTML(data) {
 
   // 選択項目のIDセット
   const selectedSet = selectedEvalItems ? new Set(selectedEvalItems) : null;
-  const evalItemIds = ["intro", "chief", "opqrst", "ros", "history", "reason", "vitals", "exam", "progress"];
+  const evalItemIds = ["intro", "chief", "oldcart", "ros", "history", "reason", "vitals", "exam", "progress"];
 
   let html = `
     <h4 style="margin:0 0 12px; color:#ec4899">問診スキル分析レポート</h4>
@@ -4107,12 +4107,12 @@ const DEFAULT_RUBRIC = [
     note: ""
   },
   {
-    id: "opqrst",
-    name: "OPQRST",
+    id: "oldcart",
+    name: "OLDCART",
     criteria: {
-      score2: "OPQRST（発症時期・増悪/寛解因子・性状・放散痛・程度・時間経過）のうち5項目以上を聴取",
-      score1: "OPQRSTのうち2〜4項目を聴取",
-      score0: "OPQRST項目の聴取が1項目以下"
+      score2: "OLDCART（発症時期・部位・持続時間・性状・増悪/緩和因子・放散・時間/治療）のうち5項目以上を聴取",
+      score1: "OLDCARTのうち2〜4項目を聴取",
+      score0: "OLDCART項目の聴取が1項目以下"
     },
     note: ""
   },

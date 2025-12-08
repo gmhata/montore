@@ -51,7 +51,7 @@ const RECORDINGS_BUCKET = process.env.RECORDINGS_BUCKET || ASSETS_BUCKET || ""; 
 const DEFAULT_RUBRIC = [
   { id: "intro", name: "導入（名乗り/挨拶）", criteria: { score2: "氏名を名乗り、役割を伝え、患者の氏名・年齢を確認した", score1: "挨拶または氏名確認のいずれか一方のみ実施", score0: "導入なし、または挨拶・氏名確認ともに未実施" }, note: "「お名前」「名前」「氏名」はすべて同じ意味として扱う。「お名前を教えてください」「お名前は？」等の質問で患者が名前を答えた場合は、氏名確認ができたと判定する。" },
   { id: "chief", name: "主訴", criteria: { score2: "「今日はどうされましたか」等の開放質問で主訴を聴取し、内容を復唱または確認した", score1: "主訴を聴取したが、確認・復唱なし、または閉鎖質問のみ", score0: "主訴の聴取なし" }, note: "" },
-  { id: "opqrst", name: "OPQRST", criteria: { score2: "OPQRST（発症時期・増悪/寛解因子・性状・放散痛・程度・時間経過）のうち5項目以上を聴取", score1: "OPQRSTのうち2〜4項目を聴取", score0: "OPQRST項目の聴取が1項目以下" }, note: "" },
+  { id: "oldcart", name: "OLDCART", criteria: { score2: "OLDCART（発症時期・部位・持続時間・性状・増悪/緩和因子・放散・時間/治療）のうち5項目以上を聴取", score1: "OLDCARTのうち2〜4項目を聴取", score0: "OLDCART項目の聴取が1項目以下" }, note: "" },
   { id: "ros", name: "ROS & Red Flag", criteria: { score2: "随伴症状を複数聴取し、重篤な疾患の危険信号（呼吸困難・意識障害・胸痛放散等）を確認", score1: "随伴症状の聴取はあるが、Red Flagの確認が不十分", score0: "随伴症状・Red Flagともに未確認" }, note: "" },
   { id: "history", name: "医療・生活歴", criteria: { score2: "既往歴・内服薬・アレルギー歴・喫煙/飲酒歴のうち3項目以上を聴取", score1: "上記のうち1〜2項目を聴取", score0: "医療歴・生活歴の聴取なし" }, note: "" },
   { id: "reason", name: "受診契機", criteria: { score2: "「なぜ今日受診されたのですか」等で受診理由・きっかけを明確に聴取", score1: "受診契機に触れたが、詳細な確認なし", score0: "受診契機の聴取なし" }, note: "" },
@@ -527,7 +527,7 @@ if (OPENAI_API_KEY && messages.length) {
 
   // Version 4.28: 評価項目IDと名前のマッピング（プロンプト生成用）
   const evalItemIdToName = {
-    intro: "導入", chief: "主訴", opqrst: "OPQRST", ros: "ROS&RedFlag",
+    intro: "導入", chief: "主訴", oldcart: "OLDCART", ros: "ROS&RedFlag",
     history: "医療・生活歴", reason: "受診契機", vitals: "バイタル/現症",
     exam: "身体診察", progress: "進行"
   };
@@ -608,7 +608,7 @@ ${rubricCriteriaText}
 
 summary（総評）の作成ルール（厳守）:
 - 日本語の「です・ます調」。2〜3文、合計180〜250文字に収める。${summaryExtraRule}
-- 会話ログの事実に基づく具体的な観察を少なくとも3点含める（例:「氏名確認なし」「OPQRSTの"増悪/寛解"未確認」「胸痛の随伴症状を未質問」等）。
+- 会話ログの事実に基づく具体的な観察を少なくとも3点含める（例:「氏名確認なし」「OLDCARTの"増悪/緩和因子"未確認」「胸痛の随伴症状を未質問」等）。
 - あいまい語の禁止（例:「全体的に」「だいたい」「不十分」「もっと」「気をつけたい」など）。具体的な名詞・動詞で記述する。
 - 新しい事実の創作は禁止。必要に応じて看護師/患者の発言を短く「」で引用してよい。
 - 批判は簡潔にし、最後は次回に向けた励ましの1文で締める。
@@ -622,7 +622,7 @@ positives（良かった点）の作成ルール【必須で3件以上出力す�
 improvements（改善が必要な点）の作成ルール【必須で3件以上出力すること】:
 - 必ず3〜5件出力する（0件は禁止）。各要素は文頭を動詞で始める短い指示文にする。
 - 1要素は45文字以内。具体的な観察や手技名を含める。
-- 例:「OPQRSTの時間経過を尋ねる」「Red Flagを確認する」「既往歴を聴取する」
+- 例:「OLDCARTの持続時間を尋ねる」「Red Flagを確認する」「既往歴を聴取する」
 ${improvementsExtraRule}
 
 出力 JSON 形式:
@@ -1961,18 +1961,19 @@ function analyzeConversations(sessions) {
     "なり", "ござい", "ござる", "させ", "られ", "れる", "せる", "てる", "ている"
   ]);
 
-  // OPQRST情報収集項目
-  const opqrstKeywords = {
+  // OLDCART情報収集項目
+  const oldcartKeywords = {
     onset: ["いつから", "いつ頃", "何時頃", "始まった", "発症"],
-    palliative: ["楽になる", "和らぐ", "軽減", "改善"],
-    quality: ["どのような", "どんな", "どういった", "性質"],
+    location: ["どこ", "場所", "部位", "位置", "どの辺"],
+    duration: ["どのくらい", "何分", "何時間", "続く", "持続"],
+    character: ["どのような", "どんな", "どういった", "性質", "痛み方"],
+    aggravating: ["楽になる", "和らぐ", "軽減", "改善", "悪化", "ひどくなる"],
     radiation: ["広がる", "放散", "他の場所", "移動"],
-    severity: ["程度", "どのくらい", "強さ", "重症"],
-    time: ["持続", "続く", "頻度", "繰り返し"]
+    timing: ["頻度", "繰り返し", "いつ", "治療", "薬"]
   };
-  const opqrstCoverage = {
-    onset: false, palliative: false, quality: false,
-    radiation: false, severity: false, time: false
+  const oldcartCoverage = {
+    onset: false, location: false, duration: false, character: false,
+    aggravating: false, radiation: false, timing: false
   };
 
   // キーワード定義
@@ -2017,10 +2018,10 @@ function analyzeConversations(sessions) {
           if (text.includes(word)) empathyWords++;
         });
 
-        // OPQRST情報収集の検出
-        for (const [category, keywords] of Object.entries(opqrstKeywords)) {
+        // OLDCART情報収集の検出
+        for (const [category, keywords] of Object.entries(oldcartKeywords)) {
           if (keywords.some(kw => text.includes(kw))) {
-            opqrstCoverage[category] = true;
+            oldcartCoverage[category] = true;
           }
         }
       } else if (who === "patient") {
@@ -2051,9 +2052,9 @@ function analyzeConversations(sessions) {
   const totalQuestions = openQuestions + closedQuestions;
   const openQuestionRatio = totalQuestions > 0 ? Math.round((openQuestions / totalQuestions) * 100) : 0;
 
-  // OPQRST網羅率
-  const opqrstCount = Object.values(opqrstCoverage).filter(v => v).length;
-  const opqrstCoverageRate = Math.round((opqrstCount / 6) * 100);
+  // OLDCART網羅率
+  const oldcartCount = Object.values(oldcartCoverage).filter(v => v).length;
+  const oldcartCoverageRate = Math.round((oldcartCount / 7) * 100);
 
   // 頻出語TOP20を抽出
   const nurseTopWords = getTopN(nurseWordFreq, 20);
@@ -2067,8 +2068,8 @@ function analyzeConversations(sessions) {
       closedQuestions,
       openQuestionRatio,
       empathyWords,
-      opqrstCoverageRate,
-      opqrstDetails: opqrstCoverage,
+      oldcartCoverageRate,
+      oldcartDetails: oldcartCoverage,
       topWords: nurseTopWords,
       utteranceExamples: nurseUtterances.slice(0, 10) // 代表的な10件
     },
@@ -3242,7 +3243,7 @@ app.get("/api/admin/users/:uid/sessions", requireAuth, requireAdmin, async (req,
       if (report.rubric && Array.isArray(report.rubric)) {
         const selectedItems = data.cfg?.selectedEvalItems || report.selectedEvalItems || null;
         const selectedSet = selectedItems ? new Set(selectedItems) : null;
-        const evalItemIds = ["intro", "chief", "opqrst", "ros", "history", "reason", "vitals", "exam", "progress"];
+        const evalItemIds = ["intro", "chief", "oldcart", "ros", "history", "reason", "vitals", "exam", "progress"];
         
         let totalScore = 0;
         let totalMax = 0;

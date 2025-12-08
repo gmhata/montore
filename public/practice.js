@@ -115,7 +115,7 @@ let statusPanelShownOnce = false; // 症状別モードで初回パネル表示�
 const EVALUATION_ITEMS = [
   { id: "intro", name: "導入", description: "挨拶・自己紹介・確認" },
   { id: "chief", name: "主訴", description: "主な症状の聴取" },
-  { id: "opqrst", name: "OPQRST", description: "症状の詳細確認" },
+  { id: "oldcart", name: "OLDCART", description: "症状の詳細確認" },
   { id: "ros", name: "ROS&RedFlag", description: "系統的レビュー・危険兆候" },
   { id: "history", name: "医療・生活歴", description: "既往歴・生活習慣" },
   { id: "reason", name: "受診契機", description: "来院理由の確認" },
@@ -3182,7 +3182,7 @@ function renderReportHTML(analysis){
   const evalItemIdToNames = {
     intro: ["導入", "導入（名乗り/挨拶）"],
     chief: ["主訴"],
-    opqrst: ["OPQRST"],
+    oldcart: ["OLDCART"],
     ros: ["ROS&RedFlag", "ROS & Red Flag", "ROS&Red Flag"],  // 複数の表記に対応
     history: ["医療・生活歴"],
     reason: ["受診契機"],
@@ -3492,13 +3492,13 @@ function renderHistoryDetailHTML(data, sessionId) {
   const selectedEvalItems = data.selectedEvalItems || report.selectedEvalItems || null;
   
   const selectedSet = selectedEvalItems ? new Set(selectedEvalItems) : null;
-  const evalItemIds = ["intro", "chief", "opqrst", "ros", "history", "reason", "vitals", "exam", "progress"];
+  const evalItemIds = ["intro", "chief", "oldcart", "ros", "history", "reason", "vitals", "exam", "progress"];
   
   // v4.53: 名前からIDへのマッピング（名前の表記揺れに対応）
   const nameToId = {
     "導入": "intro", "導入（名乗り/挨拶）": "intro",
     "主訴": "chief",
-    "OPQRST": "opqrst",
+    "OLDCART": "oldcart",
     "ROS&RedFlag": "ros", "ROS & Red Flag": "ros", "ROS&Red Flag": "ros",
     "医療・生活歴": "history",
     "受診契機": "reason",

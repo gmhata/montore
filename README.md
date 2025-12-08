@@ -156,7 +156,7 @@ gcloud secrets add-iam-policy-binding OPENAI_API_KEY \
 ### 3. 9項目ルーブリック評価
 1. 導入（名乗り/挨拶）
 2. 主訴
-3. OPQRST法
+3. OLDCART法
 4. ROS & Red Flag
 5. 医療・生活歴
 6. 受診契機
