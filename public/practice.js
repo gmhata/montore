@@ -698,23 +698,7 @@ const STOP_DEBOUNCE_MS   = 120;
 const FALLBACK_STOP_MS   = 3500;
 const SPEAK_MAX_MS       = 8000;
 
-/* v4.59 エコー防止用 - テキスト類似度チェック（エコー検出用） */
-function isSimilarText(text1, text2) {
-  if (!text1 || !text2) return false;
-  const t1 = text1.trim().toLowerCase();
-  const t2 = text2.trim().toLowerCase();
-  if (t1 === t2) return true;
-  // 80%以上の文字が一致する場合は類似と判定
-  const longer = t1.length > t2.length ? t1 : t2;
-  const shorter = t1.length > t2.length ? t2 : t1;
-  if (longer.includes(shorter) && shorter.length > 5) return true;
-  // 文字レベルの類似度
-  let matches = 0;
-  for (let i = 0; i < shorter.length; i++) {
-    if (longer.includes(shorter[i])) matches++;
-  }
-  return (matches / shorter.length) > 0.8;
-}
+/* v4.61: エコー対策削除 - 看護師発話を全て記録 */
 
 /* 進捗バー（採点待ちで端に張り付かないよう、holdAt 未満で往復） */
 let prog = 0, progTimer = null, progDir = 1, progHoldAt = 100;
@@ -1833,14 +1817,10 @@ async function startTalk(cfg){
           if (event.results[i].isFinal) {
             nurseTranscript = transcript;
             console.log('[Nurse] Web Speech final:', transcript);
-            
-            // v4.59: 直前の患者発言と同一または類似の場合はエコーとしてスキップ
-            if (lastPatientLine && isSimilarText(transcript, lastPatientLine)) {
-              console.log('[Nurse] Skipped Web Speech - echo detected (similar to last patient line)');
-              continue;
+            // v4.61: エコー対策削除 - 看護師発話を全て記録
+            if (transcript && transcript.trim()) {
+              recordLine("nurse", transcript);
             }
-            
-            recordLine("nurse", transcript);
             setSubtitle(transcript, "nurse");
             // キーワードチェック（Web Speech API用）
             const vitalItems = checkForVitalKeywords(transcript);
@@ -1999,14 +1979,7 @@ async function startTalk(cfg){
         case "conversation.item.input_audio_transcription.completed": {
           const t=(ev.text||ev.transcript||nurseBuf||"").trim();
           console.log('[Nurse] Transcription completed:', {text: ev.text, transcript: ev.transcript, nurseBuf, final: t});
-          
-          // v4.59: 直前の患者発言と同一または類似の場合はエコーとしてスキップ
-          if(t && lastPatientLine && isSimilarText(t, lastPatientLine)){
-            console.log('[Nurse] Skipped - echo detected (similar to last patient line)');
-            nurseBuf = "";
-            break;
-          }
-          
+          // v4.61: エコー対策削除 - 看護師発話を全て記録
           if(t){
             recordLine("nurse", t);
             setSubtitle(t, "nurse");
