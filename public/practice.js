@@ -3607,29 +3607,18 @@ function renderHistoryDetailHTML(data, sessionId) {
     `;
   }
   
-  // 会話ログ
+  // 会話ログ - v4.57: 評価画面と同じバッジ形式に統一
   if (messages.length > 0) {
     html += `
       <div style="margin-top:16px; padding-top:12px; border-top:1px solid #e5e7eb">
         <div style="font-weight:700; margin-bottom:8px; font-size:13px">💬 会話ログ</div>
-        <div style="max-height:300px; overflow-y:auto; background:#f9fafb; border-radius:6px; padding:10px">
+        <div class="chatlog">
     `;
     
     for (const msg of messages) {
-      const isNurse = msg.who === "nurse";
-      const bgColor = isNurse ? "#dbeafe" : "#fce7f3";
-      const labelColor = isNurse ? "#1e40af" : "#9f1239";
-      const label = isNurse ? "看護師" : "患者";
-      const align = isNurse ? "flex-end" : "flex-start";
-      
-      html += `
-        <div style="display:flex; justify-content:${align}; margin-bottom:6px">
-          <div style="max-width:85%; padding:6px 10px; background:${bgColor}; border-radius:8px">
-            <div style="font-size:9px; font-weight:600; color:${labelColor}; margin-bottom:2px">${label}</div>
-            <div style="font-size:12px; color:#374151">${esc(msg.text || "")}</div>
-          </div>
-        </div>
-      `;
+      const who = (msg.who === "nurse") ? "看護師" : "患者";
+      const badge = (msg.who === "nurse") ? "badge-nurse" : "badge-patient";
+      html += `<div class="line"><span class="badge ${badge}">${who}</span><span>${esc(msg.text || "")}</span></div>`;
     }
     
     html += `

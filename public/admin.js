@@ -698,10 +698,12 @@ async function toggleLogsRow(btn){
       const durS = getSessionDurationSec(s);
       const dur  = durS ? ` / 時間:${fmtDur(durS)}` : "";
 
-      const lines = (s.messages||[]).map(m=>{
-        const color = (m.who==="nurse") ? ' style="color:#2563eb"' : "";
-        return `<div class="logline"><span${color}>${esc(m.text||"")}</span></div>`;
-      }).join("") || `<div class="muted">（ログなし）</div>`;
+      // v4.57: 評価画面と同じバッジ形式に統一
+      const lines = (s.messages||[]).length > 0 ? `<div class="chatlog" style="margin-top:8px">` + (s.messages||[]).map(m=>{
+        const who = (m.who==="nurse") ? "看護師" : "患者";
+        const badge = (m.who==="nurse") ? "badge-nurse" : "badge-patient";
+        return `<div class="line"><span class="badge ${badge}">${who}</span><span>${esc(m.text||"")}</span></div>`;
+      }).join("") + `</div>` : `<div class="muted">（ログなし）</div>`;
 
       // 音声再生プレーヤー
       const isSignedUrl = s.audioUrl && (s.audioUrl.includes('X-Goog-Signature') || s.audioUrl.includes('Signature='));
@@ -4046,30 +4048,19 @@ function renderAdminReportHTML(data) {
     `;
   }
 
-  // 会話ログ
+  // 会話ログ - v4.57: 評価画面と同じバッジ形式に統一
   const messages = data.messages || [];
   if (messages.length > 0) {
     html += `
       <div style="margin-top:20px; padding-top:16px; border-top:1px solid #e5e7eb">
         <div style="font-weight:700; margin-bottom:12px">💬 会話ログ</div>
-        <div style="max-height:400px; overflow-y:auto; background:#f9fafb; border-radius:6px; padding:12px">
+        <div class="chatlog">
     `;
     
     for (const msg of messages) {
-      const isNurse = msg.who === "nurse";
-      const bgColor = isNurse ? "#dbeafe" : "#fce7f3";
-      const labelColor = isNurse ? "#1e40af" : "#9f1239";
-      const label = isNurse ? "看護師" : "患者";
-      const align = isNurse ? "flex-end" : "flex-start";
-      
-      html += `
-        <div style="display:flex; justify-content:${align}; margin-bottom:8px">
-          <div style="max-width:80%; padding:8px 12px; background:${bgColor}; border-radius:8px">
-            <div style="font-size:10px; font-weight:600; color:${labelColor}; margin-bottom:2px">${label}</div>
-            <div style="font-size:13px; color:#374151">${esc(msg.text || "")}</div>
-          </div>
-        </div>
-      `;
+      const who = (msg.who === "nurse") ? "看護師" : "患者";
+      const badge = (msg.who === "nurse") ? "badge-nurse" : "badge-patient";
+      html += `<div class="line"><span class="badge ${badge}">${who}</span><span>${esc(msg.text || "")}</span></div>`;
     }
     
     html += `
