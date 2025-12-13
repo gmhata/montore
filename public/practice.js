@@ -74,8 +74,6 @@ let selectedScenario = "chest";
 let currentSessionId = null;
 let patientBuf = "", nurseBuf = "";
 let lastPatientLine = "";
-let lastPatientLineTime = 0;  // v4.62: エコー検出用タイムスタンプ
-const ECHO_WINDOW_MS = 1500;  // 患者発話から1.5秒以内の同一発話はエコーとみなす
 let audioSink = null;
 let micStream = null;
 let pc = null, dc = null;
@@ -700,7 +698,7 @@ const STOP_DEBOUNCE_MS   = 120;
 const FALLBACK_STOP_MS   = 3500;
 const SPEAK_MAX_MS       = 8000;
 
-/* v4.62: タイミングベースのエコー検出 - ECHO_WINDOW_MS以内の同一発話のみスキップ */
+/* v4.61: エコー対策削除 - 看護師発話を全て記録 */
 
 /* 進捗バー（採点待ちで端に張り付かないよう、holdAt 未満で往復） */
 let prog = 0, progTimer = null, progDir = 1, progHoldAt = 100;
@@ -1819,15 +1817,8 @@ async function startTalk(cfg){
           if (event.results[i].isFinal) {
             nurseTranscript = transcript;
             console.log('[Nurse] Web Speech final:', transcript);
-            // v4.62: タイミングベースのエコー検出
-            // 患者発話から1.5秒以内の同一発話はエコーとしてスキップ
-            // 1.5秒以降は意図的なリピート（復唱）として記録
+            // v4.61: エコー対策削除 - 看護師発話を全て記録
             if (transcript && transcript.trim()) {
-              const timeSincePatient = Date.now() - lastPatientLineTime;
-              if (transcript.trim() === lastPatientLine && timeSincePatient < ECHO_WINDOW_MS) {
-                console.log('[Nurse] Skipped Web Speech - echo detected (same text within 1.5s)');
-                continue;
-              }
               recordLine("nurse", transcript);
             }
             setSubtitle(transcript, "nurse");
@@ -1988,16 +1979,8 @@ async function startTalk(cfg){
         case "conversation.item.input_audio_transcription.completed": {
           const t=(ev.text||ev.transcript||nurseBuf||"").trim();
           console.log('[Nurse] Transcription completed:', {text: ev.text, transcript: ev.transcript, nurseBuf, final: t});
-          // v4.62: タイミングベースのエコー検出
-          // 患者発話から1.5秒以内の同一発話はエコーとしてスキップ
-          // 1.5秒以降は意図的なリピート（復唱）として記録
+          // v4.61: エコー対策削除 - 看護師発話を全て記録
           if(t){
-            const timeSincePatient = Date.now() - lastPatientLineTime;
-            if (t === lastPatientLine && timeSincePatient < ECHO_WINDOW_MS) {
-              console.log('[Nurse] Skipped - echo detected (same text within 1.5s)');
-              nurseBuf = "";
-              break;
-            }
             recordLine("nurse", t);
             setSubtitle(t, "nurse");
             // キーワードチェック
@@ -2195,7 +2178,6 @@ function logAndPostPatient(text){
   const t = String(text||"").trim();
   if (!t || t === lastPatientLine) return;
   lastPatientLine = t;
-  lastPatientLineTime = Date.now();  // v4.62: タイムスタンプ記録
   recordLine("patient", t);
 }
 
