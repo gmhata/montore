@@ -698,6 +698,27 @@ const STOP_DEBOUNCE_MS   = 120;
 const FALLBACK_STOP_MS   = 3500;
 const SPEAK_MAX_MS       = 8000;
 
+/* v4.59 エコー防止用 */
+let lastPatientLine = "";
+
+// テキスト類似度チェック（エコー検出用）
+function isSimilarText(text1, text2) {
+  if (!text1 || !text2) return false;
+  const t1 = text1.trim().toLowerCase();
+  const t2 = text2.trim().toLowerCase();
+  if (t1 === t2) return true;
+  // 80%以上の文字が一致する場合は類似と判定
+  const longer = t1.length > t2.length ? t1 : t2;
+  const shorter = t1.length > t2.length ? t2 : t1;
+  if (longer.includes(shorter) && shorter.length > 5) return true;
+  // 文字レベルの類似度
+  let matches = 0;
+  for (let i = 0; i < shorter.length; i++) {
+    if (longer.includes(shorter[i])) matches++;
+  }
+  return (matches / shorter.length) > 0.8;
+}
+
 /* 進捗バー（採点待ちで端に張り付かないよう、holdAt 未満で往復） */
 let prog = 0, progTimer = null, progDir = 1, progHoldAt = 100;
 function startProgress(opts){
@@ -1814,11 +1835,11 @@ async function startTalk(cfg){
           const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
             nurseTranscript = transcript;
-            console.log('[Nurse] Web Speech final:', transcript, 'patientSpeaking:', patientSpeaking);
+            console.log('[Nurse] Web Speech final:', transcript);
             
-            // v4.58: 患者発話中はエコーの可能性が高いのでスキップ
-            if (patientSpeaking) {
-              console.log('[Nurse] Skipped Web Speech - patient is speaking (echo prevention)');
+            // v4.59: 直前の患者発言と同一または類似の場合はエコーとしてスキップ
+            if (lastPatientLine && isSimilarText(transcript, lastPatientLine)) {
+              console.log('[Nurse] Skipped Web Speech - echo detected (similar to last patient line)');
               continue;
             }
             
@@ -1980,11 +2001,11 @@ async function startTalk(cfg){
         case "input_audio_transcription.completed":
         case "conversation.item.input_audio_transcription.completed": {
           const t=(ev.text||ev.transcript||nurseBuf||"").trim();
-          console.log('[Nurse] Transcription completed:', {text: ev.text, transcript: ev.transcript, nurseBuf, final: t, patientSpeaking});
+          console.log('[Nurse] Transcription completed:', {text: ev.text, transcript: ev.transcript, nurseBuf, final: t});
           
-          // v4.58: 患者発話中はエコーの可能性が高いのでスキップ
-          if (patientSpeaking) {
-            console.log('[Nurse] Skipped - patient is speaking (echo prevention)');
+          // v4.59: 直前の患者発言と同一または類似の場合はエコーとしてスキップ
+          if(t && lastPatientLine && isSimilarText(t, lastPatientLine)){
+            console.log('[Nurse] Skipped - echo detected (similar to last patient line)');
             nurseBuf = "";
             break;
           }
