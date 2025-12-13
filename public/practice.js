@@ -1814,7 +1814,14 @@ async function startTalk(cfg){
           const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
             nurseTranscript = transcript;
-            console.log('[Nurse] Web Speech final:', transcript);
+            console.log('[Nurse] Web Speech final:', transcript, 'patientSpeaking:', patientSpeaking);
+            
+            // v4.58: 患者発話中はエコーの可能性が高いのでスキップ
+            if (patientSpeaking) {
+              console.log('[Nurse] Skipped Web Speech - patient is speaking (echo prevention)');
+              continue;
+            }
+            
             recordLine("nurse", transcript);
             setSubtitle(transcript, "nurse");
             // キーワードチェック（Web Speech API用）
@@ -1973,7 +1980,15 @@ async function startTalk(cfg){
         case "input_audio_transcription.completed":
         case "conversation.item.input_audio_transcription.completed": {
           const t=(ev.text||ev.transcript||nurseBuf||"").trim();
-          console.log('[Nurse] Transcription completed:', {text: ev.text, transcript: ev.transcript, nurseBuf, final: t});
+          console.log('[Nurse] Transcription completed:', {text: ev.text, transcript: ev.transcript, nurseBuf, final: t, patientSpeaking});
+          
+          // v4.58: 患者発話中はエコーの可能性が高いのでスキップ
+          if (patientSpeaking) {
+            console.log('[Nurse] Skipped - patient is speaking (echo prevention)');
+            nurseBuf = "";
+            break;
+          }
+          
           if(t){
             recordLine("nurse", t);
             setSubtitle(t, "nurse");
