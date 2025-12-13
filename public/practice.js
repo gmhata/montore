@@ -698,10 +698,7 @@ const STOP_DEBOUNCE_MS   = 120;
 const FALLBACK_STOP_MS   = 3500;
 const SPEAK_MAX_MS       = 8000;
 
-/* v4.59 エコー防止用 */
-let lastPatientLine = "";
-
-// テキスト類似度チェック（エコー検出用）
+/* v4.59 エコー防止用 - テキスト類似度チェック（エコー検出用） */
 function isSimilarText(text1, text2) {
   if (!text1 || !text2) return false;
   const t1 = text1.trim().toLowerCase();
