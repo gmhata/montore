@@ -1802,6 +1802,9 @@ async function startTalk(cfg){
     const EPHEMERAL = js?.ephemeralKey || js?.client_secret?.value || js?.client_secret;
 
     // Web Speech API for nurse transcription (fallback for failed API transcription)
+    // ====== v4.64: Web Speech API を無効化し、OpenAI Realtime API のみ使用 ======
+    // 問題発生時は以下のコメントを解除して Web Speech API を復活させる
+    /*
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognition = new SpeechRecognition();
@@ -1817,12 +1820,10 @@ async function startTalk(cfg){
           if (event.results[i].isFinal) {
             nurseTranscript = transcript;
             console.log('[Nurse] Web Speech final:', transcript);
-            // v4.61: エコー対策削除 - 看護師発話を全て記録
             if (transcript && transcript.trim()) {
               recordLine("nurse", transcript);
             }
             setSubtitle(transcript, "nurse");
-            // キーワードチェック（Web Speech API用）
             const vitalItems = checkForVitalKeywords(transcript);
             if (vitalItems.length > 0) {
               console.log('[Modal] Vital keywords detected:', vitalItems, 'in:', transcript);
@@ -1833,8 +1834,6 @@ async function startTalk(cfg){
               console.log('[Modal] Exam keywords detected:', examItems, 'in:', transcript);
               showExamModal(examItems);
             }
-            // Version 4.18: server_vad有効時は手動response.createは不要（ver3と同じ）
-            // AIが自動的に発言終了を検出して応答する
           } else {
             interim = transcript;
             setSubtitle(interim + '...', "nurse");
@@ -1849,6 +1848,9 @@ async function startTalk(cfg){
       recognition.start();
       console.log('[Nurse] Web Speech Recognition started');
     }
+    */
+    console.log('[Nurse] v4.64: Using OpenAI Realtime API for transcription (Web Speech API disabled)');
+    // ====== END v4.64 ======
 
     // WebRTC
     console.log("[WebRTC] Creating PeerConnection...");
@@ -1910,8 +1912,9 @@ async function startTalk(cfg){
       const voiceName = chooseVoice({ gender: effGender, ageBand: effAgeBand });
 
       // 初期設定（音声/指示/VAD）
-      // Note: input_audio_transcription disabled due to repeated failures
-      // Subtitles will show only for patient (AI) responses using conversation items
+      // ====== v4.64: input_audio_transcription を有効化 ======
+      // 看護師の音声をOpenAI Realtime APIで文字起こし
+      // 問題発生時は input_audio_transcription の行を削除して無効化
       // Version 4.17: turn_detectionをver3の設定に戻す（server_vad有効）
       try{ dc.send(JSON.stringify({
         type:"session.update",
@@ -1919,6 +1922,7 @@ async function startTalk(cfg){
           voice: voiceName,
           modalities:["text","audio"],
           instructions: instr,
+          input_audio_transcription: { model: "whisper-1" },  // v4.64: 有効化
           turn_detection:{ type:"server_vad", silence_duration_ms:700, prefix_padding_ms:200 }
         }
       })); }catch{}
@@ -1932,6 +1936,7 @@ async function startTalk(cfg){
               session:{
                 voice: voiceName,
                 instructions: instr,  // 言語設定を強制的に維持
+                input_audio_transcription: { model: "whisper-1" },  // v4.64: 有効化
                 turn_detection:{ type:"server_vad", silence_duration_ms:700, prefix_padding_ms:200 }
               }
             }));
