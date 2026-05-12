@@ -1786,13 +1786,12 @@ async function startTalk(cfg){
     // 年齢帯を確定
     const effAgeBand = (cfg.persona?.ageBand || cfg.ageBand || "adult");
 
-    // Ephemeral（voice も送る）
+    // Ephemeral（voice を送る。model はサーバ側で gpt-realtime を使用）
     const ses = await fetch("/session", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + idToken0 },
       body: JSON.stringify({
-        voice: chooseVoice({ gender: effGender, ageBand: effAgeBand }),
-        model: "gpt-4o-realtime-preview-2024-12-17"
+        voice: chooseVoice({ gender: effGender, ageBand: effAgeBand })
       })
     });
     const js = await ses.json().catch(()=>({}));
@@ -1911,33 +1910,39 @@ async function startTalk(cfg){
       });
       const voiceName = chooseVoice({ gender: effGender, ageBand: effAgeBand });
 
-      // 初期設定（音声/指示/VAD）
-      // ====== v4.64: input_audio_transcription を有効化 ======
-      // 看護師の音声をOpenAI Realtime APIで文字起こし
-      // 問題発生時は input_audio_transcription の行を削除して無効化
-      // Version 4.17: turn_detectionをver3の設定に戻す（server_vad有効）
+      // GA Realtime API: session.update uses nested audio.{input,output} structure.
+      // voice は ephemeral key 生成時に確定済み（音声出力後は変更不可）なので audio.output には含めない。
+      // v4.64 で有効化された看護師音声の文字起こしは audio.input.transcription にネスト。
       try{ dc.send(JSON.stringify({
         type:"session.update",
         session:{
-          voice: voiceName,
-          modalities:["text","audio"],
+          type: "realtime",
           instructions: instr,
-          input_audio_transcription: { model: "whisper-1" },  // v4.64: 有効化
-          turn_detection:{ type:"server_vad", silence_duration_ms:700, prefix_padding_ms:200 }
+          output_modalities: ["audio"],
+          audio: {
+            input: {
+              transcription: { model: "whisper-1" },
+              turn_detection: { type: "server_vad", silence_duration_ms: 700, prefix_padding_ms: 200 }
+            }
+          }
         }
       })); }catch{}
 
-      // 競合対策: 少し遅延して voice と instructions を再適用
+      // 競合対策: instructions と turn_detection / transcription を遅延再適用（言語設定の維持）
       [400, 1000, 1800].forEach(delay=>{
         setTimeout(()=>{ try{
           if (dc && dc.readyState==="open") {
             dc.send(JSON.stringify({
               type:"session.update",
               session:{
-                voice: voiceName,
-                instructions: instr,  // 言語設定を強制的に維持
-                input_audio_transcription: { model: "whisper-1" },  // v4.64: 有効化
-                turn_detection:{ type:"server_vad", silence_duration_ms:700, prefix_padding_ms:200 }
+                type: "realtime",
+                instructions: instr,
+                audio: {
+                  input: {
+                    transcription: { model: "whisper-1" },
+                    turn_detection: { type: "server_vad", silence_duration_ms: 700, prefix_padding_ms: 200 }
+                  }
+                }
               }
             }));
           }
@@ -2128,14 +2133,14 @@ async function startTalk(cfg){
     console.log("[WebRTC] SDP offer created:", offer);
     await pc.setLocalDescription(offer);
     console.log("[WebRTC] Local description set, sending to OpenAI...");
+    // GA: /v1/realtime/calls (model は ephemeral key に紐づくので URL に含めない)
     const sdpResp = await fetch(
-      "https://api.openai.com/v1/realtime?model=" + encodeURIComponent("gpt-4o-realtime-preview-2024-12-17"),
+      "https://api.openai.com/v1/realtime/calls",
       {
         method: "POST",
         headers: {
           Authorization: "Bearer " + EPHEMERAL,
-          "Content-Type": "application/sdp",
-          "OpenAI-Beta": "realtime=v1"
+          "Content-Type": "application/sdp"
         },
         body: offer.sdp
       }

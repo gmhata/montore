@@ -374,12 +374,16 @@ app.post("/session", requireAuth, async (req, res) => {
     let voice = String(body.voice || body?.persona?.voice || "").toLowerCase();
     if (!allowedVoices.has(voice)) voice = fallbackVoice;
 
-    const r = await openaiFetch("https://api.openai.com/v1/realtime/sessions", {
+    // GA Realtime API: /v1/realtime/client_secrets with nested session config.
+    // Voice is bound at ephemeral-key creation time and cannot be changed after audio output starts.
+    const r = await openaiFetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
-      headers: { "OpenAI-Beta": "realtime=v1" },
       body: JSON.stringify({
-        model: "gpt-4o-realtime-preview-2024-12-17",
-        voice
+        session: {
+          type: "realtime",
+          model: "gpt-realtime",
+          audio: { output: { voice } }
+        }
       }),
     });
 
@@ -392,7 +396,8 @@ app.post("/session", requireAuth, async (req, res) => {
       return res.status(r.status).json({ ok: false, error: j?.error?.message || `OpenAI ${r.status}`, detail: j });
     }
 
-    const ephemeralKey = j?.client_secret?.value || j?.client_secret || null;
+    // GA response shape: { value, expires_at, session }. Fall back to preview shape just in case.
+    const ephemeralKey = j?.value || j?.client_secret?.value || j?.client_secret || null;
     res.json({ ok: true, voice, ephemeralKey });
   } catch (e) {
     console.error("[/session] error", e);

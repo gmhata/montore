@@ -179,7 +179,7 @@ MONTOREでは2つの主要なAIプロンプトシステムを使用していま�
 ### 4.1 患者シミュレーション用プロンプト（会話用）
 
 #### 概要
-OpenAI Realtime API (`gpt-4o-realtime-preview-2024-12-17`) に送信される指示文（instructions）です。
+OpenAI Realtime API (`gpt-realtime`、GA 版) に送信される指示文（instructions）です。
 患者の性格、症状、言語、振る舞いを定義し、リアルタイム音声対話で患者役を演じさせます。
 
 #### プロンプト生成関数
@@ -709,7 +709,7 @@ ${language}
 
 | # | タスク名 | モデル | エンドポイント | 用途 |
 |---|---------|--------|---------------|------|
-| 1 | **患者シミュレーション** | gpt-4o-realtime-preview-2024-12-17 | POST /api/realtime-ephemeral-key | リアルタイム音声会話で患者役を演じる |
+| 1 | **患者シミュレーション** | gpt-realtime (GA) | POST /session (→ /v1/realtime/client_secrets) | リアルタイム音声会話で患者役を演じる |
 | 2 | **会話評価（採点）** | gpt-4o-mini | POST /api/sessions/:id/finish | 会話ログを9項目ルーブリックで採点 |
 | 3 | **AIコーチ（管理者用）** | gpt-4o-mini | POST /api/admin/ai-analysis | 全学生データの分析・統計・グラフ生成 |
 | 4 | **AIコーチ（学生用）** | gpt-4o-mini | POST /api/student/ai-analysis | 個人の学習データ分析・改善アドバイス |
@@ -731,7 +731,7 @@ ${language}
 
 | モデル | 用途 | 入力コスト | 出力コスト | 備考 |
 |--------|------|-----------|-----------|------|
-| gpt-4o-realtime-preview | 音声会話 | $100/1M tokens | $200/1M tokens | 音声入出力含む |
+| gpt-realtime (GA) | 音声会話 | 最新の料金は OpenAI 公式 Pricing を要参照 | 最新の料金は OpenAI 公式 Pricing を要参照 | 音声入出力含む。GA 移行（2025-08-28）でプレビュー版より値下げ |
 | gpt-4o | 患者生成 | $2.50/1M tokens | $10/1M tokens | 高品質テキスト生成 |
 | gpt-4o-mini | 評価・分析 | $0.15/1M tokens | $0.60/1M tokens | コスト効率重視 |
 
