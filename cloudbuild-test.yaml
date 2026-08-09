@@ -39,7 +39,7 @@ steps:
       - '--max-instances=3'
       - '--min-instances=0'
       - '--set-env-vars=FIREBASE_PROJECT_ID=$PROJECT_ID,FIRESTORE_PROJECT_ID=$PROJECT_ID,APP_VERSION=test-$SHORT_SHA,ASSETS_BUCKET=${_ASSETS_BUCKET},APP_ENV=test'
-      - '--set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest'
+      - '--set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest,LIVEKIT_URL=LIVEKIT_URL:latest,LIVEKIT_API_KEY=LIVEKIT_API_KEY:latest,LIVEKIT_API_SECRET=LIVEKIT_API_SECRET:latest'
 
 images:
   - 'gcr.io/$PROJECT_ID/montore-test:latest'

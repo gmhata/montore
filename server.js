@@ -3614,6 +3614,60 @@ app.patch("/api/generated-patients/:id/use", requireAuth, async (req, res) => {
   }
 });
 
+/* ============ piamontore: ピア問診練習 (P0) ============ */
+// LiveKit (WebRTC SFU) のアクセストークンを発行する。
+// 依存パッケージを増やさないため、JWT(HS256)は node:crypto で自前生成する。
+const LIVEKIT_URL = process.env.LIVEKIT_URL || "";
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || "";
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || "";
+
+function peerB64url(input) {
+  return Buffer.from(input).toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function peerCreateLiveKitToken({ identity, name, room, ttlSec = 4 * 3600 }) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "HS256", typ: "JWT" };
+  const payload = {
+    iss: LIVEKIT_API_KEY,
+    sub: identity,
+    name: name || identity,
+    nbf: now - 10,
+    exp: now + ttlSec,
+    video: { room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: true },
+  };
+  const data = `${peerB64url(JSON.stringify(header))}.${peerB64url(JSON.stringify(payload))}`;
+  const sig = crypto.createHmac("sha256", LIVEKIT_API_SECRET).update(data).digest();
+  return `${data}.${peerB64url(sig)}`;
+}
+
+// 通話ルーム参加用トークン発行(要ログイン)
+app.post("/api/peer/token", requireAuth, (req, res) => {
+  try {
+    if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
+      return res.status(503).json({
+        error: "LiveKit未設定です。LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET を環境変数(Secret Manager)に設定してください。",
+      });
+    }
+    const room = String(req.body?.room || "").trim();
+    const role = String(req.body?.role || "").trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(room)) {
+      return res.status(400).json({ error: "ルーム名は英数字・ハイフン・アンダースコア(64文字以内)で指定してください" });
+    }
+    if (!["patient", "nurse"].includes(role)) {
+      return res.status(400).json({ error: "role は patient または nurse を指定してください" });
+    }
+    const identity = `${role}-${req.user.uid.slice(0, 12)}`;
+    const displayName = `${role === "patient" ? "患者役" : "看護師役"} (${req.user.email || req.user.uid})`;
+    const roomName = `peer-${room}`;
+    const token = peerCreateLiveKitToken({ identity, name: displayName, room: roomName });
+    res.json({ url: LIVEKIT_URL, token, identity, room: roomName });
+  } catch (e) {
+    console.error("[/api/peer/token]", e);
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
 /* ============ 404(JSON) ============ */
 /* 404 は必ず最後に置くこと（これより下にAPIを追加しない） */
 app.use("/api", (_req, res) => res.status(404).json({ error: "not found" }));
