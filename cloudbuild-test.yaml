@@ -1,0 +1,50 @@
+# Cloud Build configuration for MONTORE TEST SITE (montore-test)
+# testブランチへのpushで montore-test サービスにデプロイする。本番(montore)には触れない。
+steps:
+  # ステップ1: Dockerイメージをビルド
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--no-cache'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/montore-test:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/montore-test:latest'
+      - '.'
+
+  # ステップ2: Container Registryにプッシュ
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'gcr.io/$PROJECT_ID/montore-test'
+
+  # ステップ3: Cloud Runにデプロイ(テスト用サービス montore-test)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'montore-test'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/montore-test:$SHORT_SHA'
+      - '--region'
+      - 'asia-northeast1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--timeout=300'
+      - '--max-instances=3'
+      - '--min-instances=0'
+      - '--set-env-vars=FIREBASE_PROJECT_ID=$PROJECT_ID,FIRESTORE_PROJECT_ID=$PROJECT_ID,APP_VERSION=test-$SHORT_SHA,ASSETS_BUCKET=${_ASSETS_BUCKET},APP_ENV=test'
+      - '--set-secrets=OPENAI_API_KEY=OPENAI_API_KEY:latest'
+
+images:
+  - 'gcr.io/$PROJECT_ID/montore-test:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '600s'
