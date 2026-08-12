@@ -114,13 +114,35 @@ $("joinBtn").onclick = async () => {
   if (!roomName) { setStatus("ルーム名を入力してください"); return; }
   $("joinBtn").disabled = true;
   try {
+    // カメラ・マイクは可能なら取得するが、使えなくても受信専用で入室する。
+    // （内蔵カメラをUE等が使用中=Device in use、カメラ無し、権限拒否などに対応）
     setStatus("カメラ・マイクを取得中...");
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: { echoCancellation: true, noiseSuppression: true },
-    });
-    localTracks = stream.getTracks();
-    $("localVideo").srcObject = new MediaStream(stream.getVideoTracks());
+    let stream = null;
+    let mode = "";
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+      mode = "camera+mic";
+    } catch (eCam) {
+      console.warn("カメラ取得失敗、音声のみを試行:", eCam?.message || eCam);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        mode = "audio-only";
+      } catch (eAud) {
+        console.warn("マイク取得も失敗、受信専用で入室:", eAud?.message || eAud);
+        stream = null;
+        mode = "receive-only";
+      }
+    }
+    localTracks = stream ? stream.getTracks() : [];
+    const localVid = stream ? stream.getVideoTracks() : [];
+    $("localVideo").srcObject = localVid.length ? new MediaStream(localVid) : null;
+    if (mode === "audio-only") setStatus("カメラが使えないため音声のみで参加します...");
+    else if (mode === "receive-only") setStatus("カメラ・マイクが使えないため受信専用で参加します...");
 
     setStatus("接続情報を取得中...");
     const { url, token } = await fetchToken(roomName);
@@ -136,7 +158,8 @@ $("joinBtn").onclick = async () => {
 
     $("leaveBtn").classList.remove("hidden");
     const others = lkRoom.remoteParticipants ? lkRoom.remoteParticipants.size : 0;
-    setStatus("入室しました(ルーム: " + roomName + ")。" + (others ? "相手は入室済みです。" : "患者役の入室を待っています..."));
+    const modeNote = mode === "camera+mic" ? "" : (mode === "audio-only" ? "(音声のみ)" : "(受信専用)");
+    setStatus("入室しました" + modeNote + "(ルーム: " + roomName + ")。" + (others ? "相手は入室済みです。" : "患者役の入室を待っています..."));
   } catch (e) {
     console.error(e);
     setStatus("エラー: " + e.message);
