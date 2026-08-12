@@ -46,23 +46,35 @@
     <div class="row" style="margin-top:10px;">
       <label>患者の声(ペルソナ):
         <select id="personaSelect" style="padding:7px 10px;border:1px solid #b0bec5;border-radius:6px;font-size:15px;">
-          <option value="0">なし(原声)</option>
-          <option value="-4">高齢男性</option>
-          <option value="-2">中年男性</option>
-          <option value="-1">若年男性</option>
-          <option value="2">高齢女性</option>
-          <option value="3">中年女性</option>
-          <option value="5">若年女性</option>
+          <option value="none">なし(原声)</option>
+          <option value="kd">高齢男性</option>
+          <option value="cd">中年男性</option>
+          <option value="jd">若年男性</option>
+          <option value="kj">高齢女性</option>
+          <option value="cj">中年女性</option>
+          <option value="jj">若年女性</option>
         </select>
       </label>
-      <span style="font-size:12px;color:#78909c;">入室中でも切替できます</span>
+      <span style="font-size:12px;color:#78909c;">入室中でも切替・微調整できます</span>
+    </div>
+    <div class="row" style="margin-top:10px;gap:18px;">
+      <label style="display:flex;align-items:center;gap:8px;">声の高さ
+        <input type="range" id="pitchRange" min="-12" max="12" step="1" value="0" style="width:180px;">
+        <span id="pitchVal" style="font-size:13px;color:#455a64;width:70px;">0 半音</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">声の太さ(フォルマント)
+        <input type="range" id="formantRange" min="0.70" max="1.40" step="0.01" value="1.00" style="width:180px;">
+        <span id="formantVal" style="font-size:13px;color:#455a64;width:60px;">100%</span>
+      </label>
     </div>
     <div id="status">ログインしてください。</div>
     <div class="note">
       入室ボタンを押すと画面選択ダイアログが開きます。「ウィンドウ」タブから
       <b>Unreal Engine(MetaHuman)のウィンドウ</b>を選択してください。
-      その映像が「あなたの姿」として看護師役に届きます。声は上で選んだペルソナに合わせて
-      リアルタイムに高さを変えて送られます(第1段階: ピッチ変換。より自然な声質変換はP4で検討)。
+      その映像が「あなたの姿」として看護師役に届きます。声はペルソナに合わせて
+      <b>高さ(ピッチ)と太さ(フォルマント)</b>の両方をリアルタイムに変換して送ります。
+      女性は「声の太さ」を上げると細く(女性的に)、男性は下げると太く(低く)なります。
+      ペルソナを選ぶと目安値が入るので、そこから2本のスライダーで耳に合わせて微調整してください。
       UEをまだ使わない動作確認では、任意のウィンドウを選べばOKです。
     </div>
   </div>
@@ -90,16 +102,30 @@ const auth = getAuth(app);
 const $ = (id) => document.getElementById(id);
 const setStatus = (msg) => { $("status").textContent = msg; };
 
-/* ===== P1: ブラウザ内リアルタイム声変換(ピッチシフト) =====
-   マイク音声を AudioWorklet(グラニュラー・ピッチシフター)に通し、
-   ペルソナに応じた半音数だけ声の高さを変えて送出する。
-   第1段階のためフォルマントは保持しない(ピッチと一緒に動く)。より自然な
-   声質変換(フォルマント独立/AIボイチェン)はP4で検討。
-   pitch≈1.0(なし)のときはパススルー(加工なし)。 */
+/* ===== P1改: ブラウザ内リアルタイム声変換(ピッチ + フォルマント) =====
+   マイク音声を 2段の AudioWorklet に通す:
+   (1) ピッチシフター: 声の高さを半音単位で変換(グラニュラー)
+   (2) フォルマントシフター: STFT で声道特性(声の太さ)を独立に変換
+   これにより「早回しした男性の声」ではなく、性別・年齢の印象を作れる。
+   ペルソナのプリセットは (高さ semitone, 太さ target) を持ち、
+   フォルマント段には W = target / pitchRatio を渡して、ピッチ段が動かした
+   フォルマントを目標値に補正する。両方とも中立時はパススルー。
+   ※さらに自然な声質(特定話者の声)にするAI変換はP4で検討。 */
 let audioCtx = null;        // AudioContext
-let pitchNode = null;       // AudioWorkletNode
+let pitchNode = null;       // ピッチ AudioWorkletNode
+let formantNode = null;     // フォルマント AudioWorkletNode
 let audioDest = null;       // MediaStreamAudioDestinationNode
 let audioSource = null;     // MediaStreamAudioSourceNode
+
+const PERSONAS = {
+  none: { p: 0,  f: 1.00 },
+  kd:   { p: -4, f: 0.88 },  // 高齢男性
+  cd:   { p: -2, f: 0.94 },  // 中年男性
+  jd:   { p: -1, f: 1.00 },  // 若年男性
+  kj:   { p: 2,  f: 1.10 },  // 高齢女性
+  cj:   { p: 4,  f: 1.16 },  // 中年女性
+  jj:   { p: 7,  f: 1.24 },  // 若年女性
+};
 
 const semitoneToRatio = (semi) => Math.pow(2, Number(semi) / 12);
 
@@ -163,37 +189,169 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 registerProcessor('pitch-shift', PitchShiftProcessor);
 `;
 
-// マイクストリームをピッチシフターに通し、送出用の音声トラックを返す
+/* フォルマント(声道特性)シフター: STFT(N=1024,hop=256,Hann)で振幅スペクトルの
+   包絡(エンベロープ)を周波数方向に W 倍に伸縮し、ゲインマスクとして適用する。
+   位相はいじらないため水っぽさが出にくく安定。W≈1.0でパススルー。
+   ※このDSPはNode上で数値検証済み(無加工復元誤差≈0、フォルマント移動を確認)。 */
+const FORMANT_WORKLET_CODE = `
+function fftInPlace(re, im, inverse) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { const tr = re[i]; re[i] = re[j]; re[j] = tr; const ti = im[i]; im[i] = im[j]; im[j] = ti; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (inverse ? 2 : -2) * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cwr = 1, cwi = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const a = i + k, b = a + len / 2;
+        const xr = re[b] * cwr - im[b] * cwi;
+        const xi = re[b] * cwi + im[b] * cwr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi;
+        re[a] += xr; im[a] += xi;
+        const t = cwr * wr - cwi * wi; cwi = cwr * wi + cwi * wr; cwr = t;
+      }
+    }
+  }
+  if (inverse) { for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; } }
+}
+class FormantShiftProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [{ name: 'formant', defaultValue: 1.0, minValue: 0.4, maxValue: 2.5, automationRate: 'k-rate' }];
+  }
+  constructor() {
+    super();
+    this.N = 1024; this.H = 256;
+    this.win = new Float32Array(this.N);
+    for (let n = 0; n < this.N; n++) this.win[n] = 0.5 - 0.5 * Math.cos(2 * Math.PI * n / this.N);
+    this.inBuf = new Float32Array(this.N);
+    this.outBuf = new Float32Array(this.N);
+    this.re = new Float32Array(this.N);
+    this.im = new Float32Array(this.N);
+    this.mag = new Float32Array(this.N / 2 + 1);
+    this.env = new Float32Array(this.N / 2 + 1);
+    this.cap = 8192;
+    this.inF = new Float32Array(this.cap); this.inH = 0; this.inT = 0; this.inC = 0;
+    this.outF = new Float32Array(this.cap); this.outH = 0; this.outT = 0; this.outC = 0;
+    this.W = 1.0;
+    this.EL = 24;
+    this.sw = new Float32Array(2 * this.EL + 1);
+    let s = 0;
+    for (let d = -this.EL; d <= this.EL; d++) { const w = 0.5 + 0.5 * Math.cos(Math.PI * d / (this.EL + 1)); this.sw[d + this.EL] = w; s += w; }
+    for (let i = 0; i < this.sw.length; i++) this.sw[i] /= s;
+  }
+  ipush(v) { this.inF[this.inT] = v; this.inT = (this.inT + 1) % this.cap; this.inC++; }
+  ishift() { const v = this.inF[this.inH]; this.inH = (this.inH + 1) % this.cap; this.inC--; return v; }
+  opush(v) { this.outF[this.outT] = v; this.outT = (this.outT + 1) % this.cap; this.outC++; }
+  oshift() { if (this.outC <= 0) return 0; const v = this.outF[this.outH]; this.outH = (this.outH + 1) % this.cap; this.outC--; return v; }
+  frameProc() {
+    const re = this.re, im = this.im, win = this.win, N = this.N, mag = this.mag, env = this.env, sw = this.sw, EL = this.EL;
+    const half = N / 2, W = this.W;
+    for (let n = 0; n < N; n++) { re[n] = this.inBuf[n] * win[n]; im[n] = 0; }
+    fftInPlace(re, im, false);
+    if (Math.abs(W - 1) > 1e-4) {
+      for (let k = 0; k <= half; k++) mag[k] = Math.hypot(re[k], im[k]);
+      for (let k = 0; k <= half; k++) {
+        let a = 0;
+        for (let d = -EL; d <= EL; d++) { let idx = k + d; if (idx < 0) idx = -idx; if (idx > half) idx = 2 * half - idx; a += mag[idx] * sw[d + EL]; }
+        env[k] = a;
+      }
+      const eps = 1e-6;
+      for (let k = 0; k <= half; k++) {
+        const src = k / W;
+        let g;
+        if (src <= half) { const i0 = Math.floor(src), i1 = Math.min(i0 + 1, half), fr = src - i0; const ne = env[i0] * (1 - fr) + env[i1] * fr; g = ne / (env[k] + eps); }
+        else g = 0.0;
+        if (g > 4) g = 4; else if (g < 0.15) g = 0.15;
+        re[k] *= g; im[k] *= g;
+        if (k > 0 && k < half) { re[N - k] *= g; im[N - k] *= g; }
+      }
+    }
+    fftInPlace(re, im, true);
+    const norm = 1 / 1.5;
+    for (let n = 0; n < N; n++) this.outBuf[n] += re[n] * win[n] * norm;
+  }
+  hop() {
+    const N = this.N, H = this.H;
+    this.inBuf.copyWithin(0, H);
+    for (let n = 0; n < H; n++) this.inBuf[N - H + n] = this.ishift();
+    for (let n = 0; n < H; n++) this.opush(this.outBuf[n]);
+    this.outBuf.copyWithin(0, H);
+    for (let n = N - H; n < N; n++) this.outBuf[n] = 0;
+    this.frameProc();
+  }
+  process(inputs, outputs, params) {
+    const output = outputs[0];
+    if (!output || output.length === 0) return true;
+    const input = inputs[0];
+    const inCh = (input && input.length > 0) ? input[0] : null;
+    const outCh = output[0];
+    this.W = params.formant[0];
+    const L = outCh.length;
+    for (let i = 0; i < L; i++) this.ipush(inCh ? inCh[i] : 0);
+    while (this.inC >= this.H) this.hop();
+    for (let i = 0; i < L; i++) outCh[i] = this.oshift();
+    for (let c = 1; c < output.length; c++) output[c].set(outCh);
+    return true;
+  }
+}
+registerProcessor('formant-shift', FormantShiftProcessor);
+`;
+
+// マイクストリームを [ピッチ] -> [フォルマント] に通し、送出用の音声トラックを返す
 async function buildVoiceTrack(micStream) {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === "suspended") { try { await audioCtx.resume(); } catch {} }
-  const blob = new Blob([PITCH_WORKLET_CODE], { type: "application/javascript" });
-  const url = URL.createObjectURL(blob);
-  await audioCtx.audioWorklet.addModule(url);
-  URL.revokeObjectURL(url);
+  for (const code of [PITCH_WORKLET_CODE, FORMANT_WORKLET_CODE]) {
+    const blob = new Blob([code], { type: "application/javascript" });
+    const url = URL.createObjectURL(blob);
+    await audioCtx.audioWorklet.addModule(url);
+    URL.revokeObjectURL(url);
+  }
   audioSource = audioCtx.createMediaStreamSource(micStream);
   pitchNode = new AudioWorkletNode(audioCtx, "pitch-shift", { outputChannelCount: [1] });
+  formantNode = new AudioWorkletNode(audioCtx, "formant-shift", { outputChannelCount: [1] });
   audioDest = audioCtx.createMediaStreamDestination();
-  audioSource.connect(pitchNode).connect(audioDest);
-  applyPersona(); // 現在の選択を反映
+  audioSource.connect(pitchNode).connect(formantNode).connect(audioDest);
+  applyPersona(); // 現在のスライダー値を反映
   return audioDest.stream.getAudioTracks()[0];
 }
 
+// スライダー(高さ・太さ)の現在値を DSP に反映する
 function applyPersona() {
-  if (!pitchNode) return;
-  const semi = $("personaSelect").value;
-  const ratio = semitoneToRatio(semi);
-  const p = pitchNode.parameters.get("pitch");
-  p.setValueAtTime(ratio, audioCtx ? audioCtx.currentTime : 0);
+  const semi = Number($("pitchRange").value);
+  const formantTarget = Number($("formantRange").value);
+  const pitchRatio = semitoneToRatio(semi);
+  const W = formantTarget / pitchRatio; // ピッチ段が動かしたフォルマントを目標へ補正
+  $("pitchVal").textContent = (semi > 0 ? "+" : "") + semi + " 半音";
+  $("formantVal").textContent = Math.round(formantTarget * 100) + "%";
+  if (pitchNode) pitchNode.parameters.get("pitch").setValueAtTime(pitchRatio, audioCtx ? audioCtx.currentTime : 0);
+  if (formantNode) formantNode.parameters.get("formant").setValueAtTime(W, audioCtx ? audioCtx.currentTime : 0);
 }
-$("personaSelect").addEventListener("change", applyPersona);
+
+// ペルソナ選択 -> スライダーに目安値をセットしてから反映
+function applyPresetFromPersona() {
+  const key = $("personaSelect").value;
+  const pre = PERSONAS[key] || PERSONAS.none;
+  $("pitchRange").value = pre.p;
+  $("formantRange").value = pre.f;
+  applyPersona();
+}
+$("personaSelect").addEventListener("change", applyPresetFromPersona);
+$("pitchRange").addEventListener("input", applyPersona);
+$("formantRange").addEventListener("input", applyPersona);
 
 function teardownVoice() {
   try { if (audioSource) audioSource.disconnect(); } catch {}
   try { if (pitchNode) pitchNode.disconnect(); } catch {}
+  try { if (formantNode) formantNode.disconnect(); } catch {}
   try { if (audioDest) audioDest.disconnect(); } catch {}
   try { if (audioCtx) audioCtx.close(); } catch {}
-  audioSource = pitchNode = audioDest = audioCtx = null;
+  audioSource = pitchNode = formantNode = audioDest = audioCtx = null;
 }
 
 let lkRoom = null;
