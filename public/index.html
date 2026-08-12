@@ -608,6 +608,10 @@
               <div class="menu-card-title">マニュアル</div>
               <div class="muted small">用語の定義と使い方ガイド</div>
             </div>
+            <div id="goPeer" class="menu-card" role="button" tabindex="0">
+              <div class="menu-card-title">ピア練習<span class="muted small" style="font-weight:400">（試験）</span></div>
+              <div class="muted small">2人で問診の役割練習（看護師役・患者役）</div>
+            </div>
             <div id="goAdmin" class="menu-card" role="button" tabindex="0" style="display:none">
               <div class="menu-card-title">管理者</div>
               <div class="muted small">ユーザーや設定を管理する</div>
@@ -1218,6 +1222,12 @@
         goManual.addEventListener("click", ()=> {
           setScreen("screen-manual");
         });
+      }
+
+      const goPeer = document.getElementById("goPeer");
+      if (goPeer) {
+        goPeer.addEventListener("click", ()=> { window.location.href = "/peer.html"; });
+        goPeer.addEventListener("keydown", (e)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); window.location.href="/peer.html"; } });
       }
       if (backFromManual) {
         backFromManual.addEventListener("click", ()=> setScreen("screen-home"));

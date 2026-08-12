@@ -101,6 +101,7 @@ const app = initializeApp(window.FIREBASE_CONFIG);
 const auth = getAuth(app);
 const $ = (id) => document.getElementById(id);
 const setStatus = (msg) => { $("status").textContent = msg; };
+{ const _r = new URLSearchParams(location.search).get("room"); if (_r) $("roomInput").value = _r; }
 
 /* ===== P1改: ブラウザ内リアルタイム声変換(ピッチ + フォルマント) =====
    マイク音声を 2段の AudioWorklet に通す:
