@@ -43,11 +43,26 @@
       <button id="joinBtn" disabled>アバター画面を選んで入室</button>
       <button id="leaveBtn" class="secondary hidden">退室</button>
     </div>
+    <div class="row" style="margin-top:10px;">
+      <label>患者の声(ペルソナ):
+        <select id="personaSelect" style="padding:7px 10px;border:1px solid #b0bec5;border-radius:6px;font-size:15px;">
+          <option value="0">なし(原声)</option>
+          <option value="-4">高齢男性</option>
+          <option value="-2">中年男性</option>
+          <option value="-1">若年男性</option>
+          <option value="2">高齢女性</option>
+          <option value="3">中年女性</option>
+          <option value="5">若年女性</option>
+        </select>
+      </label>
+      <span style="font-size:12px;color:#78909c;">入室中でも切替できます</span>
+    </div>
     <div id="status">ログインしてください。</div>
     <div class="note">
       入室ボタンを押すと画面選択ダイアログが開きます。「ウィンドウ」タブから
       <b>Unreal Engine(MetaHuman)のウィンドウ</b>を選択してください。
-      その映像が「あなたの姿」として看護師役に届きます。声は今のところ実声のまま送られます(声変換はP1で追加)。
+      その映像が「あなたの姿」として看護師役に届きます。声は上で選んだペルソナに合わせて
+      リアルタイムに高さを変えて送られます(第1段階: ピッチ変換。より自然な声質変換はP4で検討)。
       UEをまだ使わない動作確認では、任意のウィンドウを選べばOKです。
     </div>
   </div>
@@ -75,8 +90,115 @@ const auth = getAuth(app);
 const $ = (id) => document.getElementById(id);
 const setStatus = (msg) => { $("status").textContent = msg; };
 
+/* ===== P1: ブラウザ内リアルタイム声変換(ピッチシフト) =====
+   マイク音声を AudioWorklet(グラニュラー・ピッチシフター)に通し、
+   ペルソナに応じた半音数だけ声の高さを変えて送出する。
+   第1段階のためフォルマントは保持しない(ピッチと一緒に動く)。より自然な
+   声質変換(フォルマント独立/AIボイチェン)はP4で検討。
+   pitch≈1.0(なし)のときはパススルー(加工なし)。 */
+let audioCtx = null;        // AudioContext
+let pitchNode = null;       // AudioWorkletNode
+let audioDest = null;       // MediaStreamAudioDestinationNode
+let audioSource = null;     // MediaStreamAudioSourceNode
+
+const semitoneToRatio = (semi) => Math.pow(2, Number(semi) / 12);
+
+const PITCH_WORKLET_CODE = `
+class PitchShiftProcessor extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [{ name: 'pitch', defaultValue: 1.0, minValue: 0.25, maxValue: 4.0, automationRate: 'k-rate' }];
+  }
+  constructor() {
+    super();
+    this.bufferSize = 16384;
+    this.buffer = new Float32Array(this.bufferSize);
+    this.writeIndex = 0;
+    this.grainSize = 3072; // 約64ms @48k
+    this.phase = 0;        // 0..1(グレイン内位相)
+  }
+  readSample(idx) {
+    const N = this.bufferSize;
+    idx = ((idx % N) + N) % N;
+    const i0 = Math.floor(idx);
+    const i1 = (i0 + 1) % N;
+    const frac = idx - i0;
+    return this.buffer[i0] * (1 - frac) + this.buffer[i1] * frac;
+  }
+  process(inputs, outputs, params) {
+    const input = inputs[0];
+    const output = outputs[0];
+    if (!output || output.length === 0) return true;
+    const inCh = (input && input.length > 0) ? input[0] : null;
+    const outCh = output[0];
+    const pitch = params.pitch[0];
+    const G = this.grainSize;
+    const N = this.bufferSize;
+    const passthrough = Math.abs(pitch - 1.0) < 1e-3;
+    for (let i = 0; i < outCh.length; i++) {
+      const s = inCh ? inCh[i] : 0;
+      this.buffer[this.writeIndex] = s;
+      if (passthrough) {
+        outCh[i] = s;
+      } else {
+        const g1 = this.phase;
+        const g2 = (this.phase + 0.5) % 1;
+        const d1 = g1 * G;
+        const d2 = g2 * G;
+        const r1 = this.readSample(this.writeIndex - d1);
+        const r2 = this.readSample(this.writeIndex - d2);
+        const w1 = 0.5 - 0.5 * Math.cos(2 * Math.PI * g1);
+        const w2 = 0.5 - 0.5 * Math.cos(2 * Math.PI * g2);
+        outCh[i] = r1 * w1 + r2 * w2;
+        this.phase += (1 - pitch) / G;
+        if (this.phase >= 1) this.phase -= 1;
+        else if (this.phase < 0) this.phase += 1;
+      }
+      this.writeIndex = (this.writeIndex + 1) % N;
+    }
+    // 他チャンネルにも同じ出力(モノラル運用)
+    for (let c = 1; c < output.length; c++) output[c].set(outCh);
+    return true;
+  }
+}
+registerProcessor('pitch-shift', PitchShiftProcessor);
+`;
+
+// マイクストリームをピッチシフターに通し、送出用の音声トラックを返す
+async function buildVoiceTrack(micStream) {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") { try { await audioCtx.resume(); } catch {} }
+  const blob = new Blob([PITCH_WORKLET_CODE], { type: "application/javascript" });
+  const url = URL.createObjectURL(blob);
+  await audioCtx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+  audioSource = audioCtx.createMediaStreamSource(micStream);
+  pitchNode = new AudioWorkletNode(audioCtx, "pitch-shift", { outputChannelCount: [1] });
+  audioDest = audioCtx.createMediaStreamDestination();
+  audioSource.connect(pitchNode).connect(audioDest);
+  applyPersona(); // 現在の選択を反映
+  return audioDest.stream.getAudioTracks()[0];
+}
+
+function applyPersona() {
+  if (!pitchNode) return;
+  const semi = $("personaSelect").value;
+  const ratio = semitoneToRatio(semi);
+  const p = pitchNode.parameters.get("pitch");
+  p.setValueAtTime(ratio, audioCtx ? audioCtx.currentTime : 0);
+}
+$("personaSelect").addEventListener("change", applyPersona);
+
+function teardownVoice() {
+  try { if (audioSource) audioSource.disconnect(); } catch {}
+  try { if (pitchNode) pitchNode.disconnect(); } catch {}
+  try { if (audioDest) audioDest.disconnect(); } catch {}
+  try { if (audioCtx) audioCtx.close(); } catch {}
+  audioSource = pitchNode = audioDest = audioCtx = null;
+}
+
 let lkRoom = null;
 let localTracks = [];
+let rawMicStream = null;
 
 onAuthStateChanged(auth, (user) => {
   if (user) {
@@ -127,12 +249,14 @@ $("joinBtn").onclick = async () => {
       audio: false,
     });
     setStatus("マイクを取得中...");
-    const micStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
+    rawMicStream = await navigator.mediaDevices.getUserMedia({
+      // ピッチシフト側で加工するため、ここでは自動ゲイン等は最小限に
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
     });
-    // 将来(P1): ここで micStream を AudioWorklet に通してピッチ/フォルマント変換した
-    // MediaStreamTrack を作り、それを publish する。
-    localTracks = [...screenStream.getVideoTracks(), ...micStream.getAudioTracks()];
+    setStatus("声変換を準備中...");
+    const voiceTrack = await buildVoiceTrack(rawMicStream);
+    // 送出するのは「加工後の音声」+「アバター画面(映像)」
+    localTracks = [...screenStream.getVideoTracks(), voiceTrack];
     $("localVideo").srcObject = new MediaStream(screenStream.getVideoTracks());
 
     // 画面共有をブラウザのUIから停止された場合は退室扱いにする
@@ -169,6 +293,8 @@ $("leaveBtn").onclick = async () => {
   try { if (lkRoom) await lkRoom.disconnect(); } catch {}
   localTracks.forEach((t) => t.stop());
   localTracks = [];
+  teardownVoice();
+  if (rawMicStream) { rawMicStream.getTracks().forEach((t) => t.stop()); rawMicStream = null; }
   $("localVideo").srcObject = null;
   const ra = document.getElementById("remoteAudio"); if (ra) ra.remove();
   $("leaveBtn").classList.add("hidden");
