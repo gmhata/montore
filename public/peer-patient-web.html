@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>piamontore - 患者役(Web版アバター)</title>
+<title>PeerMontore - 患者役(Web版アバター)</title>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -31,7 +31,7 @@
 </head>
 <body>
 <header>
-  <h1>piamontore 問診ピア練習</h1>
+  <h1>PeerMontore 問診ピア練習</h1>
   <span class="badge">患者役(Web版アバター)</span>
   <span id="userinfo" style="margin-left:auto;font-size:13px;"></span>
 </header>
@@ -145,10 +145,11 @@ function frameToObject(obj){
   const box=new THREE.Box3().setFromObject(obj);
   const sph=box.getBoundingSphere(new THREE.Sphere());
   const c=sph.center, r=sph.radius||0.2;
-  const dist=r/Math.sin((camera.fov*Math.PI/180)/2);
-  camera.position.set(c.x, c.y+r*0.05, c.z+dist*1.15);
-  camera.near=dist/100; camera.far=dist*100; camera.updateProjectionMatrix();
-  camera.lookAt(c.x,c.y,c.z);
+  const dist=(r*0.62)/Math.sin((camera.fov*Math.PI/180)/2);
+  const cy=c.y+r*0.12; // 顔(上半分)を中心に、大きめに寄せる
+  camera.position.set(c.x, cy, c.z+dist);
+  camera.near=Math.max(dist/100,0.01); camera.far=dist*100; camera.updateProjectionMatrix();
+  camera.lookAt(c.x,cy,c.z);
 }
 async function loadAvatar(){
   const ktx2=new KTX2Loader().setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/').detectSupport(renderer);
