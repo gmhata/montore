@@ -82,14 +82,16 @@ function canon(s) {
 }
 
 // 反応が弱い系統(目の開閉・視線・頬)を増幅。1.0で頭打ち。正規化名をキーにする。
+// FLOOR: 静止時の微小ノイズを切る量(動いた分だけ増幅して眠そう/勝手に動くのを防ぐ)。
+const FLOOR = 0.03;
 const GAIN = {};
 (function () {
   const set = (name, g) => { GAIN[canon(name)] = g; };
-  [['eyeBlinkLeft', 1.9], ['eyeBlinkRight', 1.9],
-   ['eyeLookInLeft', 1.7], ['eyeLookOutLeft', 1.7], ['eyeLookUpLeft', 1.7], ['eyeLookDownLeft', 1.7],
-   ['eyeLookInRight', 1.7], ['eyeLookOutRight', 1.7], ['eyeLookUpRight', 1.7], ['eyeLookDownRight', 1.7],
-   ['eyeSquintLeft', 1.6], ['eyeSquintRight', 1.6], ['eyeWideLeft', 1.6], ['eyeWideRight', 1.6],
-   ['cheekPuff', 2.4], ['cheekSquintLeft', 1.7], ['cheekSquintRight', 1.7]
+  [['eyeBlinkLeft', 3.2], ['eyeBlinkRight', 3.2],
+   ['eyeLookInLeft', 2.6], ['eyeLookOutLeft', 2.6], ['eyeLookUpLeft', 2.6], ['eyeLookDownLeft', 2.6],
+   ['eyeLookInRight', 2.6], ['eyeLookOutRight', 2.6], ['eyeLookUpRight', 2.6], ['eyeLookDownRight', 2.6],
+   ['eyeSquintLeft', 2.4], ['eyeSquintRight', 2.4], ['eyeWideLeft', 2.4], ['eyeWideRight', 2.4],
+   ['cheekPuff', 4.5], ['cheekSquintLeft', 2.6], ['cheekSquintRight', 2.6]
   ].forEach(([n, g]) => set(n, g));
 })();
 
@@ -185,7 +187,12 @@ function applyResults(res) {
         if (c.categoryName === '_neutral') continue;
         const cn = canon(c.categoryName);
         const idx = ci[cn];
-        if (idx !== undefined) { inf[idx] = Math.min(1, c.score * (GAIN[cn] || 1)); if (m === morphMeshes[0]) matched++; }
+        if (idx !== undefined) {
+          const g = GAIN[cn];
+          const v = g ? Math.min(1, Math.max(0, c.score - FLOOR) * g) : c.score;
+          inf[idx] = v;
+          if (m === morphMeshes[0]) matched++;
+        }
       }
     }
     if (!matchedOnce) {
