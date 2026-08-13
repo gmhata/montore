@@ -3,21 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ピア練習 - モントレ</title>
+<title>ピア練習 - PeerMontore</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; background: #fdf2f8; color: #3b1e33; min-height: 100vh; }
   header { background: linear-gradient(90deg,#ec4899,#db2777); color: #fff; padding: 14px 22px; display: flex; align-items: center; gap: 12px; }
   header h1 { font-size: 18px; font-weight: 700; }
   header a { margin-left: auto; color: #fff; font-size: 13px; text-decoration: none; opacity: .9; }
-  main { max-width: 820px; margin: 0 auto; padding: 24px 20px; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 20px; }
   .card { background: #fff; border-radius: 14px; padding: 22px; box-shadow: 0 2px 10px rgba(219,39,119,.10); margin-bottom: 18px; }
   h2 { font-size: 16px; margin-bottom: 6px; color:#9d174d; }
   .step { font-size:13px; color:#9d5b7e; margin-bottom:14px; }
   .rooms { display:grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 6px; }
-  .room { border:2px solid #f5c6e0; border-radius:10px; padding:14px 6px; text-align:center; font-weight:700; color:#be185d; background:#fff; cursor:pointer; transition:.12s; user-select:none; }
+  .room { border:2px solid #f5c6e0; border-radius:10px; padding:10px 6px; text-align:center; background:#fff; cursor:pointer; transition:.12s; user-select:none; min-height:74px; display:flex; flex-direction:column; justify-content:center; gap:4px; }
   .room:hover { border-color:#ec4899; }
-  .room.selected { background:#ec4899; color:#fff; border-color:#db2777; box-shadow:0 3px 10px rgba(236,72,153,.3); }
+  .room .rn { font-weight:700; color:#be185d; font-size:15px; }
+  .room .occ { font-size:11px; color:#9ca3af; line-height:1.3; word-break:break-all; }
+  .room.has1 .occ { color:#0891b2; }
+  .room.selected { background:#ec4899; border-color:#db2777; box-shadow:0 3px 10px rgba(236,72,153,.3); }
+  .room.selected .rn, .room.selected .occ { color:#fff; }
+  .room.full { background:#f3f4f6; border-color:#e5e7eb; cursor:not-allowed; opacity:.7; }
+  .room.full .rn { color:#9ca3af; }
+  .room.full .occ { color:#ef4444; }
   .roles { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 6px; }
   .role { display:block; text-decoration:none; color:inherit; border:2px solid #f5c6e0; border-radius:12px; padding:20px; transition:.15s; cursor:pointer; background:#fff; }
   .role:hover { border-color:#ec4899; box-shadow:0 4px 14px rgba(236,72,153,.18); transform: translateY(-2px); }
@@ -27,18 +34,21 @@
   .pick { font-size:14px; color:#6b2b52; margin: 6px 0 2px; min-height: 20px; }
   .pick b { color:#be185d; }
   .note { font-size: 13px; background: #fff0f7; border-radius: 8px; padding: 12px 14px; margin-top: 14px; line-height: 1.8; color:#6b2b52; }
+  .authmsg { font-size:13px; color:#b91c1c; margin-bottom:10px; }
   @media (max-width:620px){ .rooms{ grid-template-columns:repeat(3,1fr);} .roles{ grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
 <header>
-  <h1>ピア練習（試験）</h1>
+  <h1>PeerMontore ピア練習</h1>
+  <span id="who" style="font-size:12px;opacity:.9;"></span>
   <a href="/index.html">← メニューに戻る</a>
 </header>
 <main>
   <div class="card">
     <h2>① ルームを選ぶ</h2>
-    <div class="step">相手と同じルームを選んでください（管理者が用意したルームから任意に選択）。</div>
+    <div class="step">相手と同じルームを選んでください。各ルームの在室者（名前・役割）が見えます。満室(2人)は選べません。</div>
+    <div id="authmsg" class="authmsg" style="display:none;">montoreにログインが必要です。<a href="/index.html">メニューからログイン</a>してください。</div>
     <div class="rooms" id="rooms"></div>
     <div class="pick" id="pick">ルームが選ばれていません。</div>
   </div>
@@ -68,39 +78,96 @@
     </div>
   </div>
 </main>
-<script>
-  const $ = (id) => document.getElementById(id);
-  // ルーム数（管理者が用意する数。ここを変えれば増減できる）
-  const ROOM_COUNT = 10;
-  let selectedRoom = null;
 
-  const roomsEl = $("rooms");
+<script src="/firebase-config.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, getIdToken } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+
+const $ = (id) => document.getElementById(id);
+const ROOM_COUNT = 10;
+let selectedRoom = null;
+let occupancy = {};   // { renshu1: [{role,name}], ... }
+
+const app = initializeApp(window.FIREBASE_CONFIG);
+const auth = getAuth(app);
+
+// ルームタイル生成
+const roomsEl = $("rooms");
+for (let i = 1; i <= ROOM_COUNT; i++) {
+  const key = "renshu" + i;
+  const d = document.createElement("div");
+  d.className = "room";
+  d.dataset.room = key;
+  d.innerHTML = `<div class="rn">ルーム${i}</div><div class="occ">空き</div>`;
+  d.addEventListener("click", () => onRoomClick(key, i, d));
+  roomsEl.appendChild(d);
+}
+
+function roleMark(r){ return r === "nurse" ? "看" : (r === "patient" ? "患" : "?"); }
+
+function renderRooms() {
   for (let i = 1; i <= ROOM_COUNT; i++) {
-    const d = document.createElement("div");
-    d.className = "room";
-    d.textContent = "ルーム" + i;
-    d.dataset.room = "renshu" + i;
-    d.addEventListener("click", () => selectRoom(i, d));
-    roomsEl.appendChild(d);
+    const key = "renshu" + i;
+    const el = roomsEl.querySelector(`[data-room="${key}"]`);
+    const members = occupancy[key] || [];
+    const full = members.length >= 2;
+    const occEl = el.querySelector(".occ");
+    if (members.length === 0) occEl.textContent = "空き";
+    else occEl.textContent = members.map(m => `${m.name || "?"}(${roleMark(m.role)})`).join(" / ");
+    el.classList.toggle("full", full && selectedRoom !== key);
+    el.classList.toggle("has1", members.length === 1);
+    // 選んでいた部屋が満室になったら選択解除
+    if (full && selectedRoom === key && members.length >= 2) { /* 自分が入っている場合もあるので放置 */ }
   }
+}
 
-  function selectRoom(i, el) {
-    selectedRoom = "renshu" + i;
-    document.querySelectorAll(".room").forEach(r => r.classList.remove("selected"));
-    el.classList.add("selected");
-    $("pick").innerHTML = "選択中: <b>ルーム" + i + "</b>（相手も同じルームを選んでください）";
-    $("asNurse").classList.remove("disabled");
-    $("asPatient").classList.remove("disabled");
-    $("asPatientUE").classList.remove("disabled");
-  }
+function onRoomClick(key, i, el) {
+  const members = occupancy[key] || [];
+  if (members.length >= 2) return; // 満室は選べない
+  selectedRoom = key;
+  roomsEl.querySelectorAll(".room").forEach(r => r.classList.remove("selected"));
+  el.classList.add("selected");
+  const waiting = members.length === 1 ? `（${members[0].name}さんが待っています）` : "（相手も同じルームを選んでください）";
+  $("pick").innerHTML = `選択中: <b>ルーム${i}</b>${waiting}`;
+  $("asNurse").classList.remove("disabled");
+  $("asPatient").classList.remove("disabled");
+  $("asPatientUE").classList.remove("disabled");
+  renderRooms();
+}
 
-  function go(page) {
-    if (!selectedRoom) { alert("先にルームを選んでください"); return; }
-    location.href = page + "?room=" + encodeURIComponent(selectedRoom);
+function go(page) {
+  if (!selectedRoom) { alert("先にルームを選んでください"); return; }
+  location.href = page + "?room=" + encodeURIComponent(selectedRoom);
+}
+$("asNurse").addEventListener("click", () => go("/peer-nurse.html"));
+$("asPatient").addEventListener("click", () => go("/peer-patient-web.html"));
+$("asPatientUE").addEventListener("click", () => go("/peer-patient.html"));
+
+// 在室ポーリング
+let pollTimer = null;
+async function pollRooms() {
+  try {
+    if (!auth.currentUser) return;
+    const idToken = await getIdToken(auth.currentUser);
+    const r = await fetch("/api/peer/rooms", { headers: { "Authorization": "Bearer " + idToken } });
+    if (!r.ok) return;
+    const data = await r.json();
+    occupancy = data.rooms || {};
+    renderRooms();
+  } catch (e) {}
+}
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    $("who").textContent = user.email || "";
+    $("authmsg").style.display = "none";
+    pollRooms();
+    if (!pollTimer) pollTimer = setInterval(pollRooms, 4000);
+  } else {
+    $("authmsg").style.display = "";
   }
-  $("asNurse").addEventListener("click", () => go("/peer-nurse.html"));
-  $("asPatient").addEventListener("click", () => go("/peer-patient-web.html"));
-  $("asPatientUE").addEventListener("click", () => go("/peer-patient.html"));
+});
 </script>
 </body>
 </html>

@@ -3668,6 +3668,51 @@ app.post("/api/peer/token", requireAuth, (req, res) => {
   }
 });
 
+/* ============ ピア練習: 在室(プレゼンス) ============ */
+const PEER_PRESENCE_TTL_MS = 15000; // これより古い在室は「退室済み」とみなす
+function peerDisplayName(u) {
+  return u.name || (u.email ? String(u.email).split("@")[0] : (u.uid || "").slice(0, 6));
+}
+
+// 入室中の心拍。5秒おきに呼ぶ想定。ルームごとの在室を更新。
+app.post("/api/peer/heartbeat", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.json({ ok: true, note: "no-db" });
+    const room = String(req.body?.room || "").trim();
+    const role = String(req.body?.role || "").trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(room)) return res.status(400).json({ error: "bad room" });
+    if (!["patient", "nurse"].includes(role)) return res.status(400).json({ error: "bad role" });
+    await db.collection("peerPresence").doc(req.user.uid).set({
+      room, uid: req.user.uid, role, name: peerDisplayName(req.user), ts: Date.now(),
+    });
+    res.json({ ok: true });
+  } catch (e) { console.error("[/api/peer/heartbeat]", e); res.status(500).json({ error: String(e?.message || e) }); }
+});
+
+// 退室
+app.post("/api/peer/leave", requireAuth, async (req, res) => {
+  try { if (db) { try { await db.collection("peerPresence").doc(req.user.uid).delete(); } catch (_) {} } }
+  catch (_) {}
+  res.json({ ok: true });
+});
+
+// ロビー用: 各ルームの在室者(名前・役割)を返す
+app.get("/api/peer/rooms", requireAuth, async (_req, res) => {
+  try {
+    const rooms = {};
+    if (db) {
+      const snap = await db.collection("peerPresence").get();
+      const now = Date.now();
+      snap.forEach((d) => {
+        const v = d.data() || {};
+        if (!v.room || !v.ts || (now - v.ts) > PEER_PRESENCE_TTL_MS) return;
+        (rooms[v.room] = rooms[v.room] || []).push({ role: v.role || "", name: v.name || "" });
+      });
+    }
+    res.json({ rooms });
+  } catch (e) { console.error("[/api/peer/rooms]", e); res.status(500).json({ error: String(e?.message || e) }); }
+});
+
 /* ============ 404(JSON) ============ */
 /* 404 は必ず最後に置くこと（これより下にAPIを追加しない） */
 app.use("/api", (_req, res) => res.status(404).json({ error: "not found" }));

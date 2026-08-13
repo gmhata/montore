@@ -124,6 +124,25 @@ async function fetchToken(room) {
   return data;
 }
 
+// ===== 在室(プレゼンス)ハートビート =====
+let currentRoom = null, hbTimer = null;
+async function peerHeartbeat() {
+  if (!currentRoom || !auth.currentUser) return;
+  try {
+    const idToken = await getIdToken(auth.currentUser);
+    await fetch("/api/peer/heartbeat", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken }, body: JSON.stringify({ room: currentRoom, role: ROLE }) });
+  } catch (e) {}
+}
+function startHeartbeat(room) { currentRoom = room; peerHeartbeat(); if (!hbTimer) hbTimer = setInterval(peerHeartbeat, 5000); }
+async function stopHeartbeat() {
+  if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
+  const room = currentRoom; currentRoom = null;
+  if (room && auth.currentUser) {
+    try { const idToken = await getIdToken(auth.currentUser); await fetch("/api/peer/leave", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken }, body: JSON.stringify({ room }), keepalive: true }); } catch (e) {}
+  }
+}
+window.addEventListener("pagehide", () => { stopHeartbeat(); });
+
 function attachRemoteTrack(track) {
   if (track.kind === "video") {
     track.attach($("remoteVideo"));
@@ -186,6 +205,7 @@ $("joinBtn").onclick = async () => {
     for (const t of localTracks) await lkRoom.localParticipant.publishTrack(t);
 
     $("leaveBtn").classList.remove("hidden");
+    startHeartbeat(roomName);
     const others = lkRoom.remoteParticipants ? lkRoom.remoteParticipants.size : 0;
     const modeNote = mode === "camera+mic" ? "" : (mode === "audio-only" ? "(音声のみ)" : "(受信専用)");
     setStatus("入室しました" + modeNote + "(ルーム: " + roomName + ")。" + (others ? "相手は入室済みです。" : "患者役の入室を待っています..."));
@@ -197,6 +217,7 @@ $("joinBtn").onclick = async () => {
 };
 
 $("leaveBtn").onclick = async () => {
+  stopHeartbeat();
   try { if (lkRoom) await lkRoom.disconnect(); } catch {}
   localTracks.forEach((t) => t.stop());
   localTracks = [];
