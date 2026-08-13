@@ -52,13 +52,19 @@
         <div class="rd">あなたの実写カメラ・実声で参加します。相手（患者役）のアバターと対話します。</div>
       </a>
       <a class="role disabled" id="asPatient">
-        <div class="rt">患者役で入室</div>
-        <div class="rd">UEのアバター画面を配信し、声はペルソナに合わせて変換して届けます。</div>
+        <div class="rt">患者役で入室（推奨・UE不要）</div>
+        <div class="rd">Webカメラの表情が3Dアバターに反映されます。UE不要でどのPCでもOK。声はペルソナに合わせて変換。</div>
+      </a>
+    </div>
+    <div style="margin-top:12px;">
+      <a class="role disabled" id="asPatientUE" style="display:block;">
+        <div class="rt" style="font-size:15px;">患者役で入室（UE版・先生のデモ用）</div>
+        <div class="rd">Unreal EngineのMetaHuman（写真級）を配信する上級モード。GPUとUEの準備が必要です。</div>
       </a>
     </div>
     <div class="note">
-      患者役はUnreal Editorで Piamontore を先に開いておくとアバターが配信できます。
-      デスクトップのランチャー「患者役_起動.bat / 看護師役_起動.bat」から起動すると、患者側の画面選択が自動化されます。
+      通常はWeb版（UE不要）を使ってください。先生のデモでUE版を使う場合は、先にUnreal Editorで対象プロジェクトを開き、
+      デスクトップのランチャー「患者役_起動.bat」から起動すると画面選択が自動化されます。
     </div>
   </div>
 </main>
@@ -85,6 +91,7 @@
     $("pick").innerHTML = "選択中: <b>ルーム" + i + "</b>（相手も同じルームを選んでください）";
     $("asNurse").classList.remove("disabled");
     $("asPatient").classList.remove("disabled");
+    $("asPatientUE").classList.remove("disabled");
   }
 
   function go(page) {
@@ -92,7 +99,8 @@
     location.href = page + "?room=" + encodeURIComponent(selectedRoom);
   }
   $("asNurse").addEventListener("click", () => go("/peer-nurse.html"));
-  $("asPatient").addEventListener("click", () => go("/peer-patient.html"));
+  $("asPatient").addEventListener("click", () => go("/peer-patient-web.html"));
+  $("asPatientUE").addEventListener("click", () => go("/peer-patient.html"));
 </script>
 </body>
 </html>
