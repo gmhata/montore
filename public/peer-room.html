@@ -81,7 +81,7 @@
       </label>
       <label style="display:flex;align-items:center;gap:6px;">高さ<input type="range" id="pitchRange" min="-12" max="12" step="1" value="0" style="width:120px;"><span id="pitchVal" style="font-size:12px;width:60px;">0 半音</span></label>
       <label style="display:flex;align-items:center;gap:6px;">太さ<input type="range" id="formantRange" min="0.70" max="1.40" step="0.01" value="1.00" style="width:120px;"><span id="formantVal" style="font-size:12px;width:48px;">100%</span></label>
-      <span style="font-size:12px;color:#78909c;">患者役のときに使います（入室中も調整可）</span>
+      <span style="font-size:12px;color:#78909c;">患者役のときに使います（「患者役で開始」を押す前にここで選んでください）</span>
     </div>
     <div class="note">UE版（先生のデモ用・写真級MetaHuman）を使う場合は <a id="ueLink" href="#">こちら</a>。</div>
     <div id="status2" style="font-size:13px;color:#607d8b;margin-top:10px;"></div>
@@ -96,7 +96,6 @@
         <button id="leaveBtn" class="secondary">退室（ロビーへ）</button>
       </div>
     </div>
-    <div class="voicerow row hidden" id="voiceControlsLive"></div>
   </div>
 
   <div class="videos hidden" id="videosWrap">
@@ -312,8 +311,7 @@ async function startRole(role){
 
     joined=true;
     showCall(role);
-    // 患者役なら声コントロールを通話中パネルにも出す
-    if(role==="patient"){ $("voiceControlsLive").classList.remove("hidden"); $("voiceControlsLive").appendChild($("voiceControls")); }
+    // 声設定は役割選択時のみ。通話中は表示しない(役割選択パネルにそのまま置く)。
     startHeartbeat();
     const others=lkRoom.remoteParticipants?lkRoom.remoteParticipants.size:0;
     const note = receiveOnly ? "(受信専用)" : "";
@@ -338,9 +336,6 @@ async function teardown(){
   $("camVideo").srcObject=null; $("localVideo").srcObject=null;
   const ra=$("remoteAudio"); if(ra) ra.remove();
   joined=false; ROLE=null;
-  // 声コントロールを役割選択パネルに戻す
-  $("rolePanel").querySelector(".note").insertAdjacentElement("beforebegin", $("voiceControls"));
-  $("voiceControlsLive").classList.add("hidden");
   $("pickNurse").style.pointerEvents=""; $("pickPatient").style.pointerEvents="";
 }
 $("swapBtn").addEventListener("click", async ()=>{ await teardown(); showRoleSelection(); setStatus2("役割を選び直してください（同じルームのままです）。"); });
