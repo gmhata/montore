@@ -54,28 +54,10 @@
   </div>
 
   <div class="card">
-    <h2>② 役割を選んで入室</h2>
-    <div class="step">2人（できれば2台のPC）で、片方が看護師役、もう片方が患者役になります。</div>
-    <div class="roles">
-      <a class="role disabled" id="asNurse">
-        <div class="rt">看護師役で入室</div>
-        <div class="rd">あなたの実写カメラ・実声で参加します。相手（患者役）のアバターと対話します。</div>
-      </a>
-      <a class="role disabled" id="asPatient">
-        <div class="rt">患者役で入室（推奨・UE不要）</div>
-        <div class="rd">Webカメラの表情が3Dアバターに反映されます。UE不要でどのPCでもOK。声はペルソナに合わせて変換。</div>
-      </a>
-    </div>
-    <div style="margin-top:12px;">
-      <a class="role disabled" id="asPatientUE" style="display:block;">
-        <div class="rt" style="font-size:15px;">患者役で入室（UE版・先生のデモ用）</div>
-        <div class="rd">Unreal EngineのMetaHuman（写真級）を配信する上級モード。GPUとUEの準備が必要です。</div>
-      </a>
-    </div>
-    <div class="note">
-      通常はWeb版（UE不要）を使ってください。先生のデモでUE版を使う場合は、先にUnreal Editorで対象プロジェクトを開き、
-      デスクトップのランチャー「患者役_起動.bat」から起動すると画面選択が自動化されます。
-    </div>
+    <h2>② 練習画面へ進む</h2>
+    <div class="step">ルームを選んだら練習画面へ進みます。役割（看護師役／患者役）は練習画面で選べ、同じルームのまま「役割を交代」もできます。</div>
+    <button id="goRoom" disabled style="width:100%;padding:16px;border:none;border-radius:12px;font-size:16px;font-weight:700;color:#fff;background:#ec4899;cursor:pointer;">練習画面へ進む →</button>
+    <div class="note">看護師役はそのままのあなた、患者役はWebカメラの表情がアバターになります（UE不要）。UE版（先生のデモ用）は練習画面内のリンクから使えます。</div>
   </div>
 </main>
 
@@ -115,10 +97,15 @@ function renderRooms() {
     const occEl = el.querySelector(".occ");
     if (members.length === 0) occEl.textContent = "空き";
     else occEl.textContent = members.map(m => `${m.name || "?"}(${roleMark(m.role)})`).join(" / ");
-    el.classList.toggle("full", full && selectedRoom !== key);
+    el.classList.toggle("full", full);
     el.classList.toggle("has1", members.length === 1);
-    // 選んでいた部屋が満室になったら選択解除
-    if (full && selectedRoom === key && members.length >= 2) { /* 自分が入っている場合もあるので放置 */ }
+    // 選んでいた部屋が満室になったら選択解除(ロビーにいる時点で自分は未参加)
+    if (full && selectedRoom === key) {
+      selectedRoom = null;
+      el.classList.remove("selected");
+      $("goRoom").disabled = true;
+      $("pick").innerHTML = "選んだルームが満室になりました。別のルームを選んでください。";
+    }
   }
 }
 
@@ -130,9 +117,7 @@ function onRoomClick(key, i, el) {
   el.classList.add("selected");
   const waiting = members.length === 1 ? `（${members[0].name}さんが待っています）` : "（相手も同じルームを選んでください）";
   $("pick").innerHTML = `選択中: <b>ルーム${i}</b>${waiting}`;
-  $("asNurse").classList.remove("disabled");
-  $("asPatient").classList.remove("disabled");
-  $("asPatientUE").classList.remove("disabled");
+  $("goRoom").disabled = false;
   renderRooms();
 }
 
@@ -140,9 +125,7 @@ function go(page) {
   if (!selectedRoom) { alert("先にルームを選んでください"); return; }
   location.href = page + "?room=" + encodeURIComponent(selectedRoom);
 }
-$("asNurse").addEventListener("click", () => go("/peer-nurse.html"));
-$("asPatient").addEventListener("click", () => go("/peer-patient-web.html"));
-$("asPatientUE").addEventListener("click", () => go("/peer-patient.html"));
+$("goRoom").addEventListener("click", () => go("/peer-room.html"));
 
 // 在室ポーリング
 let pollTimer = null;

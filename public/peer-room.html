@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PeerMontore - 練習画面</title>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif; background: #f4f6f8; color: #263238; min-height: 100vh; }
+  header { background: #4527a0; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-wrap:wrap; }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header .room { background: rgba(255,255,255,.2); border-radius: 6px; padding: 3px 12px; font-size: 14px; font-weight:700; }
+  header .role { background: #ec4899; border-radius: 6px; padding: 3px 12px; font-size: 13px; }
+  header .sp { margin-left:auto; font-size:13px; }
+  header a { color:#fff; font-size:13px; text-decoration:none; opacity:.9; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  .panel { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 16px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  label { font-size: 14px; }
+  select { padding: 7px 10px; border: 1px solid #b0bec5; border-radius: 6px; font-size: 15px; }
+  button { padding: 10px 18px; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; background: #4527a0; color: #fff; }
+  button:hover { filter: brightness(1.1); } button:disabled { background: #b0bec5; cursor: default; }
+  button.secondary { background: #eceff1; color: #37474f; }
+  button.big { font-size:16px; padding:14px 22px; }
+  .rolepick { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:6px; }
+  .rolecard { border:2px solid #d1c4e9; border-radius:12px; padding:20px; cursor:pointer; transition:.15s; background:#fff; }
+  .rolecard:hover { border-color:#4527a0; box-shadow:0 4px 14px rgba(69,39,160,.15); transform:translateY(-2px); }
+  .rolecard .t { font-size:17px; font-weight:700; color:#4527a0; margin-bottom:6px; }
+  .rolecard .d { font-size:13px; color:#607d8b; line-height:1.6; }
+  #status { font-size: 13px; color: #607d8b; margin-top: 10px; white-space: pre-wrap; }
+  .note { font-size:13px; background:#ede7f6; border-radius:6px; padding:10px 14px; margin-top:12px; line-height:1.7; }
+  .voicerow { margin-top:12px; }
+  .videos { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+  .videobox { background: #000; border-radius: 10px; overflow: hidden; position: relative; aspect-ratio: 16/9; }
+  .videobox video, .videobox canvas { width: 100%; height: 100%; object-fit: contain; background:#000; display:block; }
+  .videobox .tag { position: absolute; left: 10px; top: 10px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; padding: 3px 10px; border-radius: 4px; z-index: 2; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PeerMontore 練習</h1>
+  <span class="room" id="roomLabel">ルーム—</span>
+  <span class="role hidden" id="roleLabel"></span>
+  <span class="sp" id="userinfo"></span>
+  <a href="/peer.html">← ロビー</a>
+</header>
+<main>
+  <!-- ログイン待ち -->
+  <div class="panel" id="loginPanel">
+    <div id="loginMsg">ログイン状態を確認中...</div>
+  </div>
+
+  <!-- 役割選択 -->
+  <div class="panel hidden" id="rolePanel">
+    <div class="row" style="justify-content:space-between;">
+      <div><b>このルームで役割を選んでください</b>（同じ相手のまま、あとで「役割を交代」できます）</div>
+    </div>
+    <div class="row voicerow">
+      <label>カメラ: <select id="cameraSelect"><option value="">既定のカメラ</option></select></label>
+      <button id="camRefreshBtn" class="secondary" type="button">カメラ一覧を更新</button>
+    </div>
+    <div class="rolepick">
+      <div class="rolecard" id="pickNurse">
+        <div class="t">看護師役で開始</div>
+        <div class="d">あなたの実写カメラ・実声で参加。相手（患者役）のアバターと対話します。</div>
+      </div>
+      <div class="rolecard" id="pickPatient">
+        <div class="t">患者役で開始（UE不要）</div>
+        <div class="d">Webカメラの表情が3Dアバターに反映。声はペルソナに変換して届きます。下で声を選べます。</div>
+      </div>
+    </div>
+    <div class="voicerow row" id="voiceControls">
+      <label>患者の声(ペルソナ):
+        <select id="personaSelect">
+          <option value="none">なし(原声)</option>
+          <option value="kd">高齢男性</option><option value="cd">中年男性</option><option value="jd">若年男性</option>
+          <option value="kj">高齢女性</option><option value="cj">中年女性</option><option value="jj">若年女性</option>
+        </select>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;">高さ<input type="range" id="pitchRange" min="-12" max="12" step="1" value="0" style="width:120px;"><span id="pitchVal" style="font-size:12px;width:60px;">0 半音</span></label>
+      <label style="display:flex;align-items:center;gap:6px;">太さ<input type="range" id="formantRange" min="0.70" max="1.40" step="0.01" value="1.00" style="width:120px;"><span id="formantVal" style="font-size:12px;width:48px;">100%</span></label>
+      <span style="font-size:12px;color:#78909c;">患者役のときに使います（入室中も調整可）</span>
+    </div>
+    <div class="note">UE版（先生のデモ用・写真級MetaHuman）を使う場合は <a id="ueLink" href="#">こちら</a>。</div>
+    <div id="status2" style="font-size:13px;color:#607d8b;margin-top:10px;"></div>
+  </div>
+
+  <!-- 通話中 -->
+  <div class="panel hidden" id="callPanel">
+    <div class="row" style="justify-content:space-between;">
+      <div id="status">接続中...</div>
+      <div class="row">
+        <button id="swapBtn" class="secondary">役割を交代</button>
+        <button id="leaveBtn" class="secondary">退室（ロビーへ）</button>
+      </div>
+    </div>
+    <div class="voicerow row hidden" id="voiceControlsLive"></div>
+  </div>
+
+  <div class="videos hidden" id="videosWrap">
+    <div class="videobox"><span class="tag">相手</span><video id="remoteVideo" autoplay playsinline></video></div>
+    <div class="videobox">
+      <span class="tag" id="localTag">自分</span>
+      <video id="localVideo" class="hidden" autoplay playsinline muted></video>
+      <canvas id="avatarCanvas" class="hidden" width="640" height="360"></canvas>
+    </div>
+  </div>
+  <video id="camVideo" class="hidden" autoplay playsinline muted></video>
+</main>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script src="/firebase-config.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, getIdToken } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+import { VoiceConverter, PERSONAS } from '/peer-voice.js';
+
+const $ = (id) => document.getElementById(id);
+const setStatus = (m) => { $("status").textContent = m; };
+const setStatus2 = (m) => { $("status2").textContent = m; };
+
+// ルーム(生の名前 renshuN)
+const roomRaw = (new URLSearchParams(location.search).get("room") || "renshu1").trim();
+const roomNum = (roomRaw.match(/(\d+)/) || [,"?"])[1];
+$("roomLabel").textContent = "ルーム" + roomNum;
+$("ueLink").href = "/peer-patient.html?room=" + encodeURIComponent(roomRaw);
+
+const app = initializeApp(window.FIREBASE_CONFIG);
+const auth = getAuth(app);
+
+let ROLE = null, joined = false;
+let lkRoom = null, localTracks = [], camStream = null, canvasStream = null;
+
+// ===== アバター(患者役) =====
+function canon(s){ return String(s).toLowerCase().replace(/left$/,'l').replace(/right$/,'r').replace(/[^a-z0-9]/g,''); }
+const FLOOR = 0.03;
+const GAIN = {};
+(function(){ const set=(n,g)=>{GAIN[canon(n)]=g;};
+  [['eyeBlinkLeft',3.2],['eyeBlinkRight',3.2],['eyeLookInLeft',2.6],['eyeLookOutLeft',2.6],['eyeLookUpLeft',2.6],['eyeLookDownLeft',2.6],
+   ['eyeLookInRight',2.6],['eyeLookOutRight',2.6],['eyeLookUpRight',2.6],['eyeLookDownRight',2.6],
+   ['eyeSquintLeft',2.4],['eyeSquintRight',2.4],['eyeWideLeft',2.4],['eyeWideRight',2.4],
+   ['cheekPuff',4.5],['cheekSquintLeft',2.6],['cheekSquintRight',2.6]].forEach(([n,g])=>set(n,g)); })();
+
+let renderer, scene, camera, morphMeshes = [], headNode = null, faceLandmarker = null, avatarRunning = false, lastVideoTime = -1;
+const targetQuat = new THREE.Quaternion();
+
+function initThree(){
+  const canvas = $("avatarCanvas");
+  renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false, preserveDrawingBuffer:true });
+  renderer.setPixelRatio(1); renderer.setSize(canvas.width, canvas.height, false);
+  scene = new THREE.Scene(); scene.background = new THREE.Color(0x101418);
+  camera = new THREE.PerspectiveCamera(28, canvas.width/canvas.height, 0.1, 100); camera.position.set(0,0,3);
+  scene.add(new THREE.AmbientLight(0xffffff,1.2));
+  const key=new THREE.DirectionalLight(0xffffff,1.6); key.position.set(1,2,2); scene.add(key);
+  const fill=new THREE.DirectionalLight(0x88aaff,0.6); fill.position.set(-2,0,1); scene.add(fill);
+}
+function frameToObject(obj){
+  const box=new THREE.Box3().setFromObject(obj); const sph=box.getBoundingSphere(new THREE.Sphere());
+  const c=sph.center, r=sph.radius||0.2; const dist=(r*0.62)/Math.sin((camera.fov*Math.PI/180)/2); const cy=c.y+r*0.12;
+  camera.position.set(c.x,cy,c.z+dist); camera.near=Math.max(dist/100,0.01); camera.far=dist*100; camera.updateProjectionMatrix(); camera.lookAt(c.x,cy,c.z);
+}
+async function loadAvatar(){
+  const ktx2=new KTX2Loader().setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/').detectSupport(renderer);
+  const loader=new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+  const gltf=await loader.loadAsync('https://threejs.org/examples/models/gltf/facecap.glb');
+  scene.add(gltf.scene); headNode=gltf.scene; morphMeshes=[];
+  gltf.scene.traverse(o=>{ if(o.isMesh && o.morphTargetDictionary && o.morphTargetInfluences){
+    const ci={}; for(const [k,idx] of Object.entries(o.morphTargetDictionary)) ci[canon(k)]=idx; o.userData.canonIndex=ci; morphMeshes.push(o); } });
+  frameToObject(gltf.scene);
+}
+async function initFace(){
+  const fileset=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+  const opts={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate:'GPU' }, outputFaceBlendshapes:true, outputFacialTransformationMatrixes:true, runningMode:'VIDEO', numFaces:1 };
+  try { faceLandmarker=await FaceLandmarker.createFromOptions(fileset, opts); }
+  catch(e){ opts.baseOptions.delegate='CPU'; faceLandmarker=await FaceLandmarker.createFromOptions(fileset, opts); }
+}
+function applyResults(res){
+  if(res.faceBlendshapes && res.faceBlendshapes.length){
+    const cats=res.faceBlendshapes[0].categories;
+    for(const m of morphMeshes){ const ci=m.userData.canonIndex, inf=m.morphTargetInfluences;
+      for(const c of cats){ if(c.categoryName==='_neutral') continue; const cn=canon(c.categoryName); const idx=ci[cn];
+        if(idx!==undefined){ const g=GAIN[cn]; inf[idx]=g?Math.min(1,Math.max(0,c.score-FLOOR)*g):c.score; } } }
+  }
+  if(res.facialTransformationMatrixes && res.facialTransformationMatrixes.length && headNode){
+    const m=new THREE.Matrix4().fromArray(res.facialTransformationMatrixes[0].data);
+    const p=new THREE.Vector3(), s=new THREE.Vector3(), q=new THREE.Quaternion(); m.decompose(p,q,s); q.y*=-1; q.z*=-1; targetQuat.copy(q);
+  }
+}
+function avatarLoop(){
+  if(!avatarRunning) return; requestAnimationFrame(avatarLoop);
+  const v=$("camVideo");
+  if(v && v.readyState>=2 && faceLandmarker){ if(v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; try{ applyResults(faceLandmarker.detectForVideo(v, performance.now())); }catch(e){} } }
+  if(headNode) headNode.quaternion.slerp(targetQuat, 0.4);
+  renderer.render(scene, camera);
+}
+
+// ===== 声変換(患者役) =====
+const voice = new VoiceConverter();
+function applyVoice(){
+  const semi=Number($("pitchRange").value), ft=Number($("formantRange").value);
+  $("pitchVal").textContent=(semi>0?"+":"")+semi+" 半音"; $("formantVal").textContent=Math.round(ft*100)+"%";
+  voice.setVoice(semi, ft);
+}
+function presetFromPersona(){ const pre=PERSONAS[$("personaSelect").value]||PERSONAS.none; $("pitchRange").value=pre.p; $("formantRange").value=pre.f; applyVoice(); }
+$("personaSelect").addEventListener("change", presetFromPersona);
+$("pitchRange").addEventListener("input", applyVoice);
+$("formantRange").addEventListener("input", applyVoice);
+
+// ===== カメラ選択 =====
+async function listCameras(){
+  try{ const devs=await navigator.mediaDevices.enumerateDevices(); const cams=devs.filter(d=>d.kind==="videoinput");
+    const sel=$("cameraSelect"); const cur=sel.value;
+    sel.innerHTML='<option value="">既定のカメラ</option>'+cams.map((c,i)=>`<option value="${c.deviceId}">${c.label||("カメラ"+(i+1))}</option>`).join("");
+    if(cur) sel.value=cur; }catch(e){}
+}
+async function setupCameras(){ try{ const tmp=await navigator.mediaDevices.getUserMedia({video:true}); tmp.getTracks().forEach(t=>t.stop()); }catch(e){} await listCameras(); }
+$("camRefreshBtn").addEventListener("click", setupCameras);
+if(navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener("devicechange", listCameras);
+
+// ===== 認証・トークン =====
+async function fetchToken(room, role){
+  const idToken=await getIdToken(auth.currentUser,true);
+  const r=await fetch("/api/peer/token",{ method:"POST", headers:{ "Content-Type":"application/json","Authorization":"Bearer "+idToken }, body:JSON.stringify({room, role}) });
+  const data=await r.json(); if(!r.ok) throw new Error(data.error||("HTTP "+r.status)); return data;
+}
+function attachRemoteTrack(track){
+  if(track.kind==="video") track.attach($("remoteVideo"));
+  else if(track.kind==="audio"){ const el=track.attach(); el.id="remoteAudio"; document.body.appendChild(el); }
+}
+
+// ===== 在室ハートビート =====
+let hbTimer=null;
+async function peerHeartbeat(){ if(!joined || !ROLE || !auth.currentUser) return;
+  try{ const idToken=await getIdToken(auth.currentUser); await fetch("/api/peer/heartbeat",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+idToken},body:JSON.stringify({room:roomRaw,role:ROLE})}); }catch(e){} }
+function startHeartbeat(){ peerHeartbeat(); if(!hbTimer) hbTimer=setInterval(peerHeartbeat,5000); }
+async function stopHeartbeat(){ if(hbTimer){clearInterval(hbTimer);hbTimer=null;} if(auth.currentUser){ try{ const idToken=await getIdToken(auth.currentUser); await fetch("/api/peer/leave",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+idToken},body:JSON.stringify({room:roomRaw}),keepalive:true}); }catch(e){} } }
+window.addEventListener("pagehide", ()=>{ stopHeartbeat(); });
+
+// ===== 画面制御 =====
+function showRoleSelection(){
+  $("rolePanel").classList.remove("hidden");
+  $("callPanel").classList.add("hidden");
+  $("videosWrap").classList.add("hidden");
+  $("roleLabel").classList.add("hidden");
+}
+function showCall(role){
+  $("rolePanel").classList.add("hidden");
+  $("callPanel").classList.remove("hidden");
+  $("videosWrap").classList.remove("hidden");
+  $("roleLabel").classList.remove("hidden");
+  $("roleLabel").textContent = role==="nurse" ? "看護師役" : "患者役(Web)";
+  $("localTag").textContent = role==="nurse" ? "自分(看護師役)" : "送信中のアバター";
+  $("localVideo").classList.toggle("hidden", role!=="nurse");
+  $("avatarCanvas").classList.toggle("hidden", role!=="patient");
+}
+
+// ===== 役割開始 =====
+async function startRole(role){
+  ROLE = role;
+  $("pickNurse").style.pointerEvents="none"; $("pickPatient").style.pointerEvents="none";
+  try{
+    setStatus2("カメラ・マイクを取得中...");
+    const camId=$("cameraSelect").value;
+    const vc = role==="nurse" ? {width:{ideal:1280},height:{ideal:720}} : {width:{ideal:640},height:{ideal:480}};
+    if(camId) vc.deviceId={exact:camId}; else vc.facingMode='user';
+    let audioTrack=null, videoTrack=null, receiveOnly=false;
+    try{
+      camStream=await navigator.mediaDevices.getUserMedia({ video:vc, audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:false} });
+    }catch(eCam){
+      // カメラ不可: 看護師は音声のみ、患者はアバター出せないのでエラー
+      if(role==="nurse"){ try{ camStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}); }catch(eAud){ camStream=null; receiveOnly=true; } }
+      else throw eCam;
+    }
+    listCameras();
+
+    if(role==="patient"){
+      $("camVideo").srcObject=new MediaStream(camStream.getVideoTracks()); await $("camVideo").play();
+      setStatus2("アバターと表情認識を準備中...(初回は少し時間がかかります)");
+      initThree(); await loadAvatar(); await initFace(); avatarRunning=true; avatarLoop();
+      const micStream=new MediaStream(camStream.getAudioTracks());
+      audioTrack=await voice.start(micStream); applyVoice();
+      canvasStream=$("avatarCanvas").captureStream(30); videoTrack=canvasStream.getVideoTracks()[0];
+    } else {
+      const vids = camStream ? camStream.getVideoTracks() : [];
+      const auds = camStream ? camStream.getAudioTracks() : [];
+      videoTrack = vids[0] || null; audioTrack = auds[0] || null;
+      $("localVideo").srcObject = videoTrack ? new MediaStream([videoTrack]) : null;
+    }
+    localTracks=[videoTrack, audioTrack].filter(Boolean);
+
+    setStatus2("通話サーバへ接続中...");
+    const { url, token }=await fetchToken(roomRaw, role);
+    lkRoom=new LivekitClient.Room({ adaptiveStream:true, dynacast:true });
+    lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,(t)=>attachRemoteTrack(t));
+    lkRoom.on(LivekitClient.RoomEvent.ParticipantConnected,(p)=>setStatus("相手が入室しました: "+(p.name||p.identity)));
+    lkRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected,()=>setStatus("相手が退室しました。"));
+    lkRoom.on(LivekitClient.RoomEvent.Disconnected,()=>setStatus("切断されました。"));
+    await lkRoom.connect(url, token);
+    for(const t of localTracks){ await lkRoom.localParticipant.publishTrack(t, t.kind==="video"?{ videoCodec:"vp9", videoEncoding:{ maxBitrate:1_800_000, maxFramerate:30 } }:undefined); }
+
+    joined=true;
+    showCall(role);
+    // 患者役なら声コントロールを通話中パネルにも出す
+    if(role==="patient"){ $("voiceControlsLive").classList.remove("hidden"); $("voiceControlsLive").appendChild($("voiceControls")); }
+    startHeartbeat();
+    const others=lkRoom.remoteParticipants?lkRoom.remoteParticipants.size:0;
+    const note = receiveOnly ? "(受信専用)" : "";
+    setStatus("入室しました"+note+"。"+(others?"相手は入室済みです。":"相手の入室を待っています..."));
+  }catch(e){
+    console.error(e);
+    setStatus2("エラー: "+(e&&e.message?e.message:e));
+    ROLE=null; $("pickNurse").style.pointerEvents=""; $("pickPatient").style.pointerEvents="";
+  }
+}
+
+// ===== 退室/交代 =====
+async function teardown(){
+  await stopHeartbeat();
+  try{ if(lkRoom) await lkRoom.disconnect(); }catch(e){}
+  lkRoom=null;
+  avatarRunning=false;
+  try{ voice.stop(); }catch(e){}
+  localTracks.forEach(t=>t.stop()); localTracks=[];
+  if(canvasStream){ canvasStream.getTracks().forEach(t=>t.stop()); canvasStream=null; }
+  if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  $("camVideo").srcObject=null; $("localVideo").srcObject=null;
+  const ra=$("remoteAudio"); if(ra) ra.remove();
+  joined=false; ROLE=null;
+  // 声コントロールを役割選択パネルに戻す
+  $("rolePanel").querySelector(".note").insertAdjacentElement("beforebegin", $("voiceControls"));
+  $("voiceControlsLive").classList.add("hidden");
+  $("pickNurse").style.pointerEvents=""; $("pickPatient").style.pointerEvents="";
+}
+$("swapBtn").addEventListener("click", async ()=>{ await teardown(); showRoleSelection(); setStatus2("役割を選び直してください（同じルームのままです）。"); });
+$("leaveBtn").addEventListener("click", async ()=>{ await teardown(); location.href="/peer.html"; });
+
+$("pickNurse").addEventListener("click", ()=> startRole("nurse"));
+$("pickPatient").addEventListener("click", ()=> startRole("patient"));
+
+// ===== 起動 =====
+onAuthStateChanged(auth, (user)=>{
+  if(user){
+    $("userinfo").textContent=user.email||"";
+    $("loginPanel").classList.add("hidden");
+    showRoleSelection();
+    setupCameras();
+  } else {
+    $("loginPanel").classList.remove("hidden");
+    $("loginMsg").innerHTML = 'montoreにログインが必要です。<a href="/index.html">メニューからログイン</a>してから、ロビー経由で開いてください。';
+    $("rolePanel").classList.add("hidden");
+  }
+});
+</script>
+</body>
+</html>
