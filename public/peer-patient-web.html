@@ -64,6 +64,10 @@
         <span id="formantVal" style="font-size:13px;width:52px;">100%</span>
       </label>
     </div>
+    <div class="row" style="margin-top:10px;">
+      <label>カメラ: <select id="cameraSelect"><option value="">既定のカメラ</option></select></label>
+      <span style="font-size:12px;color:#78909c;">入室前に選択してください</span>
+    </div>
     <div id="status">ログインしてください。</div>
     <div class="note">
       Web版はUE不要です。入室するとWebカメラの表情が3Dアバターに反映され、その映像が
@@ -202,6 +206,19 @@ $("personaSelect").addEventListener("change", presetFromPersona);
 $("pitchRange").addEventListener("input", applyVoice);
 $("formantRange").addEventListener("input", applyVoice);
 
+// ===== カメラ選択 =====
+async function listCameras(){
+  try{
+    const devs=await navigator.mediaDevices.enumerateDevices();
+    const cams=devs.filter(d=>d.kind==="videoinput");
+    const sel=$("cameraSelect"); const cur=sel.value;
+    sel.innerHTML='<option value="">既定のカメラ</option>'+cams.map((c,i)=>`<option value="${c.deviceId}">${c.label||("カメラ"+(i+1))}</option>`).join("");
+    if(cur) sel.value=cur;
+  }catch(e){}
+}
+if(navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener("devicechange", listCameras);
+listCameras();
+
 // ===== 認証・通話 =====
 let lkRoom=null, localTracks=[], camStream=null, canvasStream=null;
 
@@ -227,8 +244,12 @@ $("joinBtn").onclick=async()=>{
   $("joinBtn").disabled=true;
   try{
     setStatus("カメラ・マイクを取得中...");
-    camStream=await navigator.mediaDevices.getUserMedia({ video:{width:{ideal:640},height:{ideal:480},facingMode:'user'}, audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:false} });
+    const camId=$("cameraSelect").value;
+    const videoConstraints={ width:{ideal:640}, height:{ideal:480} };
+    if(camId) videoConstraints.deviceId={ exact:camId }; else videoConstraints.facingMode='user';
+    camStream=await navigator.mediaDevices.getUserMedia({ video:videoConstraints, audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:false} });
     $("camVideo").srcObject=new MediaStream(camStream.getVideoTracks()); await $("camVideo").play();
+    listCameras(); // 許可後はラベル付きで再取得
 
     setStatus("アバターと表情認識を準備中...(初回は数十秒)");
     initThree(); await loadAvatar(); await initFace();
