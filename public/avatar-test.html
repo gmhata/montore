@@ -81,6 +81,18 @@ function canon(s) {
     .replace(/[^a-z0-9]/g, '');
 }
 
+// 反応が弱い系統(目の開閉・視線・頬)を増幅。1.0で頭打ち。正規化名をキーにする。
+const GAIN = {};
+(function () {
+  const set = (name, g) => { GAIN[canon(name)] = g; };
+  [['eyeBlinkLeft', 1.9], ['eyeBlinkRight', 1.9],
+   ['eyeLookInLeft', 1.7], ['eyeLookOutLeft', 1.7], ['eyeLookUpLeft', 1.7], ['eyeLookDownLeft', 1.7],
+   ['eyeLookInRight', 1.7], ['eyeLookOutRight', 1.7], ['eyeLookUpRight', 1.7], ['eyeLookDownRight', 1.7],
+   ['eyeSquintLeft', 1.6], ['eyeSquintRight', 1.6], ['eyeWideLeft', 1.6], ['eyeWideRight', 1.6],
+   ['cheekPuff', 2.4], ['cheekSquintLeft', 1.7], ['cheekSquintRight', 1.7]
+  ].forEach(([n, g]) => set(n, g));
+})();
+
 let renderer, scene, camera, morphMeshes = [], headNode = null, faceLandmarker = null;
 let video, running = false, lastVideoTime = -1;
 const targetQuat = new THREE.Quaternion();
@@ -171,8 +183,9 @@ function applyResults(res) {
       const ci = m.userData.canonIndex, inf = m.morphTargetInfluences;
       for (const c of cats) {
         if (c.categoryName === '_neutral') continue;
-        const idx = ci[canon(c.categoryName)];
-        if (idx !== undefined) { inf[idx] = c.score; if (m === morphMeshes[0]) matched++; }
+        const cn = canon(c.categoryName);
+        const idx = ci[cn];
+        if (idx !== undefined) { inf[idx] = Math.min(1, c.score * (GAIN[cn] || 1)); if (m === morphMeshes[0]) matched++; }
       }
     }
     if (!matchedOnce) {
