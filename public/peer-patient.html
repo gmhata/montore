@@ -40,8 +40,18 @@
     <div class="row">
       <button id="loginBtn">Googleでログイン</button>
       <label>ルーム名: <input type="text" id="roomInput" value="renshu1"></label>
-      <button id="joinBtn" disabled>アバター画面を選んで入室</button>
+      <button id="joinBtn" disabled>入室する</button>
       <button id="leaveBtn" class="secondary hidden">退室</button>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <span style="font-size:14px;">配信ソース:</span>
+      <label style="font-size:14px;"><input type="radio" name="srcmode" value="camera" checked> カメラ(OBS仮想カメラ)</label>
+      <label style="font-size:14px;"><input type="radio" name="srcmode" value="screen"> UEウィンドウを画面共有</label>
+    </div>
+    <div class="row" id="cameraRow" style="margin-top:8px;">
+      <label>カメラ: <select id="cameraSelect" style="padding:7px 10px;border:1px solid #b0bec5;border-radius:6px;font-size:15px;"><option value="">既定のカメラ</option></select></label>
+      <button id="camRefreshBtn" class="secondary" type="button">カメラ一覧を更新</button>
+      <span style="font-size:12px;color:#607d8b;">OBSで「仮想カメラ開始」後、一覧を更新→OBS Virtual Camera を選択</span>
     </div>
     <div class="row" style="margin-top:10px;">
       <label>患者の声(ペルソナ):
@@ -69,13 +79,13 @@
     </div>
     <div id="status">ログインしてください。</div>
     <div class="note">
-      入室ボタンを押すと画面選択ダイアログが開きます。「ウィンドウ」タブから
-      <b>Unreal Engine(MetaHuman)のウィンドウ</b>を選択してください。
-      その映像が「あなたの姿」として看護師役に届きます。声はペルソナに合わせて
-      <b>高さ(ピッチ)と太さ(フォルマント)</b>の両方をリアルタイムに変換して送ります。
-      女性は「声の太さ」を上げると細く(女性的に)、男性は下げると太く(低く)なります。
-      ペルソナを選ぶと目安値が入るので、そこから2本のスライダーで耳に合わせて微調整してください。
-      UEをまだ使わない動作確認では、任意のウィンドウを選べばOKです。
+      <b>配信ソース</b>は2通り:<br>
+      ・<b>カメラ(OBS仮想カメラ)</b>(推奨): OBSでUE画面をバストアップにクロップ→「仮想カメラ開始」→ 上の「カメラ」で
+      <b>OBS Virtual Camera</b> を選ぶだけ。画面選択ダイアログは不要で、常に同じ構図・クリーンに配信できます。<br>
+      ・<b>UEウィンドウを画面共有</b>: 入室時の画面選択で <b>Unreal Engine(MetaHuman)のウィンドウ</b> を選びます(OBS不要の簡易版)。<br>
+      いずれも、その映像が「患者の姿」として看護師役に届きます。声はペルソナに合わせて
+      <b>高さ(ピッチ)と太さ(フォルマント)</b>をリアルタイム変換して送ります(女性は太さを上げると細く、男性は下げると太く)。
+      ペルソナを選ぶと目安値が入るので、2本のスライダーで微調整してください。
     </div>
   </div>
   <div class="videos">
@@ -102,6 +112,26 @@ const auth = getAuth(app);
 const $ = (id) => document.getElementById(id);
 const setStatus = (msg) => { $("status").textContent = msg; };
 { const _r = new URLSearchParams(location.search).get("room"); if (_r) $("roomInput").value = _r; }
+
+// ===== 配信ソース(カメラ/画面共有) =====
+function srcMode(){ const el = document.querySelector('input[name="srcmode"]:checked'); return el ? el.value : "camera"; }
+async function listCameras(){
+  try{ const devs = await navigator.mediaDevices.enumerateDevices(); const cams = devs.filter(d => d.kind === "videoinput");
+    const sel = $("cameraSelect"); const cur = sel.value;
+    sel.innerHTML = '<option value="">既定のカメラ</option>' + cams.map((c,i)=>`<option value="${c.deviceId}">${c.label||("カメラ"+(i+1))}</option>`).join("");
+    if (cur) sel.value = cur; }catch(e){}
+}
+// 実deviceIdを得るには一度カメラ許可が要る
+async function setupCameras(){ try{ const t = await navigator.mediaDevices.getUserMedia({video:true}); t.getTracks().forEach(x=>x.stop()); }catch(e){} await listCameras(); }
+$("camRefreshBtn").addEventListener("click", setupCameras);
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener("devicechange", listCameras);
+document.querySelectorAll('input[name="srcmode"]').forEach(r => r.addEventListener("change", ()=>{
+  const cam = srcMode() === "camera";
+  $("cameraRow").style.display = cam ? "" : "none";
+  $("joinBtn").textContent = cam ? "入室する" : "画面を選んで入室";
+  if (cam) setupCameras();
+}));
+setupCameras();
 
 /* ===== P1改: ブラウザ内リアルタイム声変換(ピッチ + フォルマント) =====
    マイク音声を 2段の AudioWorklet に通す:
@@ -358,6 +388,7 @@ function teardownVoice() {
 let lkRoom = null;
 let localTracks = [];
 let rawMicStream = null;
+let patientVideoStream = null;
 
 onAuthStateChanged(auth, (user) => {
   if (user) {
@@ -402,11 +433,26 @@ $("joinBtn").onclick = async () => {
   if (!roomName) { setStatus("ルーム名を入力してください"); return; }
   $("joinBtn").disabled = true;
   try {
-    setStatus("アバター画面(UEウィンドウ)を選択してください...");
-    const screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: false,
-    });
+    const mode = srcMode();
+    let videoStream;
+    if (mode === "camera") {
+      // OBS仮想カメラ等を「カメラ」として取得(画面共有ダイアログ不要)
+      setStatus("カメラ(OBS仮想カメラ)を取得中...");
+      const camId = $("cameraSelect").value;
+      const vc = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
+      if (camId) vc.deviceId = { exact: camId };
+      videoStream = await navigator.mediaDevices.getUserMedia({ video: vc, audio: false });
+      listCameras();
+    } else {
+      setStatus("アバター画面(UEウィンドウ)を選択してください...");
+      videoStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+      // 画面共有をブラウザのUIから停止された場合は退室扱いにする
+      videoStream.getVideoTracks()[0].addEventListener("ended", () => $("leaveBtn").click());
+    }
+    patientVideoStream = videoStream;
     setStatus("マイクを取得中...");
     rawMicStream = await navigator.mediaDevices.getUserMedia({
       // ピッチシフト側で加工するため、ここでは自動ゲイン等は最小限に
@@ -414,12 +460,9 @@ $("joinBtn").onclick = async () => {
     });
     setStatus("声変換を準備中...");
     const voiceTrack = await buildVoiceTrack(rawMicStream);
-    // 送出するのは「加工後の音声」+「アバター画面(映像)」
-    localTracks = [...screenStream.getVideoTracks(), voiceTrack];
-    $("localVideo").srcObject = new MediaStream(screenStream.getVideoTracks());
-
-    // 画面共有をブラウザのUIから停止された場合は退室扱いにする
-    screenStream.getVideoTracks()[0].addEventListener("ended", () => $("leaveBtn").click());
+    // 送出するのは「加工後の音声」+「患者映像(カメラ or 画面共有)」
+    localTracks = [...videoStream.getVideoTracks(), voiceTrack];
+    $("localVideo").srcObject = new MediaStream(videoStream.getVideoTracks());
 
     setStatus("接続情報を取得中...");
     const { url, token } = await fetchToken(roomName);
@@ -453,6 +496,7 @@ $("leaveBtn").onclick = async () => {
   localTracks.forEach((t) => t.stop());
   localTracks = [];
   teardownVoice();
+  if (patientVideoStream) { patientVideoStream.getTracks().forEach((t) => t.stop()); patientVideoStream = null; }
   if (rawMicStream) { rawMicStream.getTracks().forEach((t) => t.stop()); rawMicStream = null; }
   $("localVideo").srcObject = null;
   const ra = document.getElementById("remoteAudio"); if (ra) ra.remove();
