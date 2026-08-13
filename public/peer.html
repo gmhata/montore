@@ -10,18 +10,24 @@
   header { background: linear-gradient(90deg,#ec4899,#db2777); color: #fff; padding: 14px 22px; display: flex; align-items: center; gap: 12px; }
   header h1 { font-size: 18px; font-weight: 700; }
   header a { margin-left: auto; color: #fff; font-size: 13px; text-decoration: none; opacity: .9; }
-  main { max-width: 760px; margin: 0 auto; padding: 24px 20px; }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 20px; }
   .card { background: #fff; border-radius: 14px; padding: 22px; box-shadow: 0 2px 10px rgba(219,39,119,.10); margin-bottom: 18px; }
-  h2 { font-size: 16px; margin-bottom: 12px; color:#9d174d; }
-  label { font-size: 14px; display:block; margin-bottom:6px; color:#6b2b52; }
-  input[type=text] { padding: 10px 12px; border: 1px solid #f0abcf; border-radius: 8px; font-size: 15px; width: 100%; max-width: 320px; }
-  .roles { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+  h2 { font-size: 16px; margin-bottom: 6px; color:#9d174d; }
+  .step { font-size:13px; color:#9d5b7e; margin-bottom:14px; }
+  .rooms { display:grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 6px; }
+  .room { border:2px solid #f5c6e0; border-radius:10px; padding:14px 6px; text-align:center; font-weight:700; color:#be185d; background:#fff; cursor:pointer; transition:.12s; user-select:none; }
+  .room:hover { border-color:#ec4899; }
+  .room.selected { background:#ec4899; color:#fff; border-color:#db2777; box-shadow:0 3px 10px rgba(236,72,153,.3); }
+  .roles { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 6px; }
   .role { display:block; text-decoration:none; color:inherit; border:2px solid #f5c6e0; border-radius:12px; padding:20px; transition:.15s; cursor:pointer; background:#fff; }
   .role:hover { border-color:#ec4899; box-shadow:0 4px 14px rgba(236,72,153,.18); transform: translateY(-2px); }
+  .role.disabled { opacity:.45; pointer-events:none; }
   .role .rt { font-size:17px; font-weight:700; color:#be185d; margin-bottom:6px; }
   .role .rd { font-size:13px; color:#7c5a6e; line-height:1.6; }
+  .pick { font-size:14px; color:#6b2b52; margin: 6px 0 2px; min-height: 20px; }
+  .pick b { color:#be185d; }
   .note { font-size: 13px; background: #fff0f7; border-radius: 8px; padding: 12px 14px; margin-top: 14px; line-height: 1.8; color:#6b2b52; }
-  @media (max-width:620px){ .roles{ grid-template-columns:1fr; } }
+  @media (max-width:620px){ .rooms{ grid-template-columns:repeat(3,1fr);} .roles{ grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -31,21 +37,26 @@
 </header>
 <main>
   <div class="card">
-    <h2>ルームを合わせて役割を選ぶ</h2>
-    <label for="room">ルーム名（2人で同じ名前にしてください）</label>
-    <input type="text" id="room" value="renshu1" autocomplete="off">
+    <h2>① ルームを選ぶ</h2>
+    <div class="step">相手と同じルームを選んでください（管理者が用意したルームから任意に選択）。</div>
+    <div class="rooms" id="rooms"></div>
+    <div class="pick" id="pick">ルームが選ばれていません。</div>
+  </div>
+
+  <div class="card">
+    <h2>② 役割を選んで入室</h2>
+    <div class="step">2人（できれば2台のPC）で、片方が看護師役、もう片方が患者役になります。</div>
     <div class="roles">
-      <a class="role" id="asNurse">
+      <a class="role disabled" id="asNurse">
         <div class="rt">看護師役で入室</div>
         <div class="rd">あなたの実写カメラ・実声で参加します。相手（患者役）のアバターと対話します。</div>
       </a>
-      <a class="role" id="asPatient">
+      <a class="role disabled" id="asPatient">
         <div class="rt">患者役で入室</div>
         <div class="rd">UEのアバター画面を配信し、声はペルソナに合わせて変換して届けます。</div>
       </a>
     </div>
     <div class="note">
-      2人（できれば2台のPC）で、上のルーム名を必ず同じにしてから、それぞれの役割を選んでください。
       患者役はUnreal Editorで Piamontore を先に開いておくとアバターが配信できます。
       デスクトップのランチャー「患者役_起動.bat / 看護師役_起動.bat」から起動すると、患者側の画面選択が自動化されます。
     </div>
@@ -53,12 +64,35 @@
 </main>
 <script>
   const $ = (id) => document.getElementById(id);
-  function go(page){
-    const room = ($("room").value || "").trim() || "renshu1";
-    location.href = page + "?room=" + encodeURIComponent(room);
+  // ルーム数（管理者が用意する数。ここを変えれば増減できる）
+  const ROOM_COUNT = 10;
+  let selectedRoom = null;
+
+  const roomsEl = $("rooms");
+  for (let i = 1; i <= ROOM_COUNT; i++) {
+    const d = document.createElement("div");
+    d.className = "room";
+    d.textContent = "ルーム" + i;
+    d.dataset.room = "renshu" + i;
+    d.addEventListener("click", () => selectRoom(i, d));
+    roomsEl.appendChild(d);
   }
-  $("asNurse").addEventListener("click", ()=> go("/peer-nurse.html"));
-  $("asPatient").addEventListener("click", ()=> go("/peer-patient.html"));
+
+  function selectRoom(i, el) {
+    selectedRoom = "renshu" + i;
+    document.querySelectorAll(".room").forEach(r => r.classList.remove("selected"));
+    el.classList.add("selected");
+    $("pick").innerHTML = "選択中: <b>ルーム" + i + "</b>（相手も同じルームを選んでください）";
+    $("asNurse").classList.remove("disabled");
+    $("asPatient").classList.remove("disabled");
+  }
+
+  function go(page) {
+    if (!selectedRoom) { alert("先にルームを選んでください"); return; }
+    location.href = page + "?room=" + encodeURIComponent(selectedRoom);
+  }
+  $("asNurse").addEventListener("click", () => go("/peer-nurse.html"));
+  $("asPatient").addEventListener("click", () => go("/peer-patient.html"));
 </script>
 </body>
 </html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ブラウザアバター 単体テスト - piamontore</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif; background:#0f1419; color:#e6edf3; }
+  header { background:#4527a0; color:#fff; padding:12px 20px; }
+  header h1 { font-size:17px; font-weight:600; }
+  header .sub { font-size:12px; opacity:.85; }
+  .wrap { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .stage { position:relative; background:#000; border-radius:12px; overflow:hidden; width:640px; max-width:100%; aspect-ratio:1/1; }
+  #avatarCanvas { width:100%; height:100%; display:block; }
+  #cam { position:absolute; right:10px; bottom:10px; width:160px; border-radius:8px; border:2px solid rgba(255,255,255,.4); transform:scaleX(-1); background:#111; }
+  .side { flex:1; min-width:260px; }
+  .card { background:#161b22; border:1px solid #21262d; border-radius:10px; padding:14px; margin-bottom:12px; }
+  .card h2 { font-size:14px; color:#a5b4fc; margin-bottom:8px; }
+  #status { font-size:13px; line-height:1.7; white-space:pre-wrap; color:#c9d1d9; }
+  .ok { color:#3fb950; } .warn { color:#d29922; } .err { color:#f85149; }
+  .bars { font-size:12px; }
+  .bar { display:flex; align-items:center; gap:8px; margin:2px 0; }
+  .bar .n { width:130px; color:#8b949e; }
+  .bar .t { flex:1; height:8px; background:#21262d; border-radius:4px; overflow:hidden; }
+  .bar .f { height:100%; background:linear-gradient(90deg,#7c3aed,#ec4899); width:0; }
+  button { padding:9px 16px; border:none; border-radius:7px; background:#7c3aed; color:#fff; font-size:14px; cursor:pointer; }
+  button:disabled { background:#30363d; }
+  label { font-size:13px; display:flex; align-items:center; gap:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ブラウザアバター 単体テスト</h1>
+  <div class="sub">Webカメラ → 表情認識(MediaPipe) → 実写スキャン3D顔(Three.js facecap)。UE不要・通話なし・カメラのみ。</div>
+</header>
+<div class="wrap">
+  <div class="stage">
+    <canvas id="avatarCanvas"></canvas>
+    <video id="cam" autoplay playsinline muted></video>
+  </div>
+  <div class="side">
+    <div class="card">
+      <button id="startBtn">カメラを開始</button>
+      <label style="margin-top:10px;"><input type="checkbox" id="headPose" checked> 顔の向きも反映する</label>
+      <label><input type="checkbox" id="mirror"> アバターを左右反転</label>
+    </div>
+    <div class="card">
+      <h2>状態</h2>
+      <div id="status">「カメラを開始」を押してください。</div>
+    </div>
+    <div class="card">
+      <h2>表情の反映（上位）</h2>
+      <div class="bars" id="bars"></div>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+
+const $ = (id) => document.getElementById(id);
+const setStatus = (html) => { $("status").innerHTML = html; };
+
+// ブレンドシェイプ名の正規化(モデル="_L/_R" と MediaPipe="Left/Right" の差を吸収)
+function canon(s) {
+  return String(s).toLowerCase()
+    .replace(/left$/, 'l').replace(/right$/, 'r')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+let renderer, scene, camera, morphMeshes = [], headNode = null, faceLandmarker = null;
+let video, running = false, lastVideoTime = -1;
+const targetQuat = new THREE.Quaternion();
+
+// ---- Three.js セットアップ ----
+function initThree() {
+  const canvas = $("avatarCanvas");
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const size = Math.min(canvas.clientWidth || 640, 640);
+  renderer.setSize(size, size, false);
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x101418);
+  camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
+  camera.position.set(0, 0, 3);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+  const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(1, 2, 2); scene.add(key);
+  const fill = new THREE.DirectionalLight(0x88aaff, 0.6); fill.position.set(-2, 0, 1); scene.add(fill);
+}
+
+function frameToObject(obj) {
+  const box = new THREE.Box3().setFromObject(obj);
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  const c = sphere.center, r = sphere.radius || 0.2;
+  const dist = r / Math.sin((camera.fov * Math.PI / 180) / 2);
+  camera.position.set(c.x, c.y + r * 0.05, c.z + dist * 1.15);
+  camera.near = dist / 100; camera.far = dist * 100; camera.updateProjectionMatrix();
+  camera.lookAt(c.x, c.y, c.z);
+}
+
+async function loadAvatar() {
+  setStatus('アバターモデルを読み込み中...');
+  const ktx2 = new KTX2Loader()
+    .setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/')
+    .detectSupport(renderer);
+  const loader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+  const url = 'https://threejs.org/examples/models/gltf/facecap.glb';
+  const gltf = await loader.loadAsync(url);
+  const root = gltf.scene;
+  scene.add(root);
+  headNode = root;
+  morphMeshes = [];
+  root.traverse((o) => { if (o.isMesh && o.morphTargetDictionary && o.morphTargetInfluences) morphMeshes.push(o); });
+  // 各メッシュに正規化名→インデックスの索引を持たせる
+  for (const m of morphMeshes) {
+    const ci = {};
+    for (const [k, idx] of Object.entries(m.morphTargetDictionary)) ci[canon(k)] = idx;
+    m.userData.canonIndex = ci;
+  }
+  frameToObject(root);
+  const dictKeys = morphMeshes.length ? Object.keys(morphMeshes[0].morphTargetDictionary) : [];
+  setStatus(`<span class="ok">アバター読込OK</span>\nモーフ対象メッシュ: ${morphMeshes.length}個 / ブレンドシェイプ: ${dictKeys.length}種`);
+  return dictKeys;
+}
+
+// ---- MediaPipe 表情認識 ----
+async function initFace() {
+  setStatus('表情認識モデルを読み込み中...(初回は数十MB)');
+  const fileset = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+  try {
+    faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate: 'GPU' },
+      outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true, runningMode: 'VIDEO', numFaces: 1,
+    });
+  } catch (e) {
+    faceLandmarker = await FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate: 'CPU' },
+      outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true, runningMode: 'VIDEO', numFaces: 1,
+    });
+  }
+}
+
+async function initCamera() {
+  video = $("cam");
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' }, audio: false });
+  video.srcObject = stream;
+  await video.play();
+}
+
+// ---- 反映 ----
+let matchedOnce = false;
+function applyResults(res) {
+  // 表情(ブレンドシェイプ)
+  if (res.faceBlendshapes && res.faceBlendshapes.length) {
+    const cats = res.faceBlendshapes[0].categories;
+    let matched = 0;
+    for (const m of morphMeshes) {
+      const ci = m.userData.canonIndex, inf = m.morphTargetInfluences;
+      for (const c of cats) {
+        if (c.categoryName === '_neutral') continue;
+        const idx = ci[canon(c.categoryName)];
+        if (idx !== undefined) { inf[idx] = c.score; if (m === morphMeshes[0]) matched++; }
+      }
+    }
+    if (!matchedOnce) {
+      matchedOnce = true;
+      const cls = matched >= 20 ? 'ok' : (matched > 0 ? 'warn' : 'err');
+      setStatus(`<span class="${cls}">認識中</span>\n対応した表情: ${matched} / ${cats.length} 種\n${matched === 0 ? '⚠ 名前が一致していません(要マッピング)' : '表情が乗っていれば成功です'}`);
+    }
+    renderBars(cats);
+  }
+  // 顔の向き
+  if ($("headPose").checked && res.facialTransformationMatrixes && res.facialTransformationMatrixes.length && headNode) {
+    const m = new THREE.Matrix4().fromArray(res.facialTransformationMatrixes[0].data);
+    const pos = new THREE.Vector3(), scl = new THREE.Vector3(), q = new THREE.Quaternion();
+    m.decompose(pos, q, scl);
+    // Y反転(鏡像補正)
+    q.y *= -1; q.z *= -1;
+    targetQuat.copy(q);
+  } else {
+    targetQuat.identity();
+  }
+}
+
+function renderBars(cats) {
+  const top = [...cats].filter(c => c.categoryName !== '_neutral').sort((a, b) => b.score - a.score).slice(0, 6);
+  $("bars").innerHTML = top.map(c =>
+    `<div class="bar"><span class="n">${c.categoryName}</span><span class="t"><span class="f" style="width:${Math.round(c.score*100)}%"></span></span></div>`
+  ).join('');
+}
+
+function renderLoop() {
+  if (!running) return;
+  requestAnimationFrame(renderLoop);
+  if (video && video.readyState >= 2 && faceLandmarker) {
+    const now = performance.now();
+    if (video.currentTime !== lastVideoTime) {
+      lastVideoTime = video.currentTime;
+      try { const res = faceLandmarker.detectForVideo(video, now); applyResults(res); } catch (e) {}
+    }
+  }
+  if (headNode) {
+    const mir = $("mirror").checked ? -1 : 1;
+    headNode.scale.x = Math.abs(headNode.scale.x) * mir || mir;
+    headNode.quaternion.slerp(targetQuat, 0.4);
+  }
+  renderer.render(scene, camera);
+}
+
+$("startBtn").onclick = async () => {
+  $("startBtn").disabled = true;
+  try {
+    initThree();
+    await loadAvatar();
+    await initCamera();
+    await initFace();
+    setStatus('<span class="ok">開始しました。</span>\nカメラに顔を向けて、口を開ける・笑う・眉を上げるとアバターが同じ表情になります。');
+    running = true;
+    renderLoop();
+  } catch (e) {
+    console.error(e);
+    setStatus('<span class="err">エラー: ' + (e && e.message ? e.message : e) + '</span>\nカメラ許可の拒否、またはネットワーク(CDN)の可能性があります。');
+    $("startBtn").disabled = false;
+  }
+};
+</script>
+</body>
+</html>
