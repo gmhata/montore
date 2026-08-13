@@ -182,12 +182,12 @@ function frameToHead(root){
   camera.near=Math.max(dist/100,0.01); camera.far=dist*100; camera.updateProjectionMatrix();
   camera.lookAt(c.x, cy, c.z);
 }
-// ===== ペルソナ→リアルアバター(Ready Player Me) =====
-// ★暫定: 全ペルソナ共通の1体。最終はユーザー作成の男女・年齢別RPMアバターに差替(task)。
-const RPM_PARAMS = "?morphTargets=ARKit&pose=A&textureSizeLimit=1024";
-const DEFAULT_AVATAR_ID = "64bfa15f0e72c63d7c3934a6";
-const PERSONA_AVATAR = { none:DEFAULT_AVATAR_ID, kd:DEFAULT_AVATAR_ID, cd:DEFAULT_AVATAR_ID, jd:DEFAULT_AVATAR_ID, kj:DEFAULT_AVATAR_ID, cj:DEFAULT_AVATAR_ID, jj:DEFAULT_AVATAR_ID };
-function avatarUrlFor(p){ const id=PERSONA_AVATAR[p]||DEFAULT_AVATAR_ID; return "https://models.readyplayer.me/"+id+".glb"+RPM_PARAMS; }
+// ===== ペルソナ→リアルアバター(自ホスト同一オリジンGLB) =====
+// ★同一オリジン配信でCORS/外部ホスト遮断(学内NW等)を回避。暫定は全ペルソナ共通の1体(最終は男女・年齢別に差替)。
+// モデル: Ready Player Me製 "brunette" (ARKitブレンドシェイプ, CC BY-NC 4.0, 出典 met4citizen/TalkingHead) — 学内教育(非商用)用途。
+const DEFAULT_AVATAR = "/avatar-f-brunette.glb";
+const PERSONA_AVATAR = { none:DEFAULT_AVATAR, kd:DEFAULT_AVATAR, cd:DEFAULT_AVATAR, jd:DEFAULT_AVATAR, kj:DEFAULT_AVATAR, cj:DEFAULT_AVATAR, jj:DEFAULT_AVATAR };
+function avatarUrlFor(p){ return PERSONA_AVATAR[p] || DEFAULT_AVATAR; }
 async function loadAvatar(url){
   const ktx2=new KTX2Loader().setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/').detectSupport(renderer);
   const loader=new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
