@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>piamontore - 患者役(Web版アバター)</title>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif; background:#f4f6f8; color:#263238; min-height:100vh; }
+  header { background:#4527a0; color:#fff; padding:12px 20px; display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:18px; font-weight:600; }
+  header .badge { background:rgba(255,255,255,.2); border-radius:4px; padding:2px 8px; font-size:12px; }
+  main { max-width:1100px; margin:0 auto; padding:20px; }
+  .panel { background:#fff; border-radius:10px; padding:20px; box-shadow:0 1px 4px rgba(0,0,0,.08); margin-bottom:16px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  label { font-size:14px; }
+  input[type=text] { padding:8px 10px; border:1px solid #b0bec5; border-radius:6px; font-size:15px; width:180px; }
+  select { padding:7px 10px; border:1px solid #b0bec5; border-radius:6px; font-size:15px; }
+  button { padding:9px 18px; border:none; border-radius:6px; font-size:15px; cursor:pointer; background:#4527a0; color:#fff; }
+  button:hover { filter:brightness(1.1); } button:disabled { background:#b0bec5; cursor:default; }
+  button.secondary { background:#eceff1; color:#37474f; }
+  #status { font-size:13px; color:#607d8b; margin-top:10px; white-space:pre-wrap; }
+  .note { font-size:13px; background:#ede7f6; border-radius:6px; padding:10px 14px; margin-top:12px; line-height:1.7; }
+  .videos { display:grid; grid-template-columns:2fr 1fr; gap:16px; }
+  .videobox { background:#000; border-radius:10px; overflow:hidden; position:relative; aspect-ratio:16/9; }
+  .videobox video, .videobox canvas { width:100%; height:100%; object-fit:contain; background:#000; display:block; }
+  .videobox .tag { position:absolute; left:10px; top:10px; background:rgba(0,0,0,.55); color:#fff; font-size:12px; padding:3px 10px; border-radius:4px; z-index:2; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>piamontore 問診ピア練習</h1>
+  <span class="badge">患者役(Web版アバター)</span>
+  <span id="userinfo" style="margin-left:auto;font-size:13px;"></span>
+</header>
+<main>
+  <div class="panel" id="setupPanel">
+    <div class="row">
+      <button id="loginBtn">Googleでログイン</button>
+      <label>ルーム名: <input type="text" id="roomInput" value="renshu1"></label>
+      <button id="joinBtn" disabled>入室する</button>
+      <button id="leaveBtn" class="secondary hidden">退室</button>
+    </div>
+    <div class="row" style="margin-top:10px;gap:18px;">
+      <label>患者の声(ペルソナ):
+        <select id="personaSelect">
+          <option value="none">なし(原声)</option>
+          <option value="kd">高齢男性</option>
+          <option value="cd">中年男性</option>
+          <option value="jd">若年男性</option>
+          <option value="kj">高齢女性</option>
+          <option value="cj">中年女性</option>
+          <option value="jj">若年女性</option>
+        </select>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">声の高さ
+        <input type="range" id="pitchRange" min="-12" max="12" step="1" value="0" style="width:150px;">
+        <span id="pitchVal" style="font-size:13px;width:64px;">0 半音</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">声の太さ
+        <input type="range" id="formantRange" min="0.70" max="1.40" step="0.01" value="1.00" style="width:150px;">
+        <span id="formantVal" style="font-size:13px;width:52px;">100%</span>
+      </label>
+    </div>
+    <div id="status">ログインしてください。</div>
+    <div class="note">
+      Web版はUE不要です。入室するとWebカメラの表情が3Dアバターに反映され、その映像が
+      「あなたの姿」として看護師役に届きます。声はペルソナに合わせて変換されます。
+      初回はアバターと表情認識モデルの読み込みで少し時間がかかります。
+    </div>
+  </div>
+  <div class="videos">
+    <div class="videobox">
+      <span class="tag">看護師(相手)</span>
+      <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+    <div class="videobox">
+      <span class="tag">送信中のアバター</span>
+      <canvas id="avatarCanvas" width="640" height="360"></canvas>
+    </div>
+  </div>
+  <video id="camVideo" class="hidden" autoplay playsinline muted></video>
+</main>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script src="/firebase-config.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, getIdToken } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+import { VoiceConverter, PERSONAS } from '/peer-voice.js';
+
+const $ = (id) => document.getElementById(id);
+const setStatus = (m) => { $("status").textContent = m; };
+{ const _r = new URLSearchParams(location.search).get("room"); if (_r) $("roomInput").value = _r; }
+
+const ROLE = "patient";
+const app = initializeApp(window.FIREBASE_CONFIG);
+const auth = getAuth(app);
+
+// ===== アバター(表情トラッキング)=====
+function canon(s){ return String(s).toLowerCase().replace(/left$/,'l').replace(/right$/,'r').replace(/[^a-z0-9]/g,''); }
+const FLOOR = 0.03;
+const GAIN = {};
+(function(){ const set=(n,g)=>{GAIN[canon(n)]=g;};
+  [['eyeBlinkLeft',3.2],['eyeBlinkRight',3.2],
+   ['eyeLookInLeft',2.6],['eyeLookOutLeft',2.6],['eyeLookUpLeft',2.6],['eyeLookDownLeft',2.6],
+   ['eyeLookInRight',2.6],['eyeLookOutRight',2.6],['eyeLookUpRight',2.6],['eyeLookDownRight',2.6],
+   ['eyeSquintLeft',2.4],['eyeSquintRight',2.4],['eyeWideLeft',2.4],['eyeWideRight',2.4],
+   ['cheekPuff',4.5],['cheekSquintLeft',2.6],['cheekSquintRight',2.6]].forEach(([n,g])=>set(n,g)); })();
+
+let renderer, scene, camera, morphMeshes = [], headNode = null, faceLandmarker = null;
+let avatarRunning = false, lastVideoTime = -1;
+const targetQuat = new THREE.Quaternion();
+
+function initThree(){
+  const canvas = $("avatarCanvas");
+  renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false, preserveDrawingBuffer:true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(canvas.width, canvas.height, false);
+  scene = new THREE.Scene(); scene.background = new THREE.Color(0x101418);
+  camera = new THREE.PerspectiveCamera(28, canvas.width/canvas.height, 0.1, 100);
+  camera.position.set(0,0,3);
+  scene.add(new THREE.AmbientLight(0xffffff,1.2));
+  const key=new THREE.DirectionalLight(0xffffff,1.6); key.position.set(1,2,2); scene.add(key);
+  const fill=new THREE.DirectionalLight(0x88aaff,0.6); fill.position.set(-2,0,1); scene.add(fill);
+}
+function frameToObject(obj){
+  const box=new THREE.Box3().setFromObject(obj);
+  const sph=box.getBoundingSphere(new THREE.Sphere());
+  const c=sph.center, r=sph.radius||0.2;
+  const dist=r/Math.sin((camera.fov*Math.PI/180)/2);
+  camera.position.set(c.x, c.y+r*0.05, c.z+dist*1.15);
+  camera.near=dist/100; camera.far=dist*100; camera.updateProjectionMatrix();
+  camera.lookAt(c.x,c.y,c.z);
+}
+async function loadAvatar(){
+  const ktx2=new KTX2Loader().setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/').detectSupport(renderer);
+  const loader=new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+  const gltf=await loader.loadAsync('https://threejs.org/examples/models/gltf/facecap.glb');
+  scene.add(gltf.scene); headNode=gltf.scene; morphMeshes=[];
+  gltf.scene.traverse(o=>{ if(o.isMesh && o.morphTargetDictionary && o.morphTargetInfluences){
+    const ci={}; for(const [k,idx] of Object.entries(o.morphTargetDictionary)) ci[canon(k)]=idx;
+    o.userData.canonIndex=ci; morphMeshes.push(o);
+  }});
+  frameToObject(gltf.scene);
+}
+async function initFace(){
+  const fileset=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+  const opts={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate:'GPU' },
+    outputFaceBlendshapes:true, outputFacialTransformationMatrixes:true, runningMode:'VIDEO', numFaces:1 };
+  try { faceLandmarker=await FaceLandmarker.createFromOptions(fileset, opts); }
+  catch(e){ opts.baseOptions.delegate='CPU'; faceLandmarker=await FaceLandmarker.createFromOptions(fileset, opts); }
+}
+function applyResults(res){
+  if(res.faceBlendshapes && res.faceBlendshapes.length){
+    const cats=res.faceBlendshapes[0].categories;
+    for(const m of morphMeshes){ const ci=m.userData.canonIndex, inf=m.morphTargetInfluences;
+      for(const c of cats){ if(c.categoryName==='_neutral') continue; const cn=canon(c.categoryName); const idx=ci[cn];
+        if(idx!==undefined){ const g=GAIN[cn]; inf[idx]=g?Math.min(1,Math.max(0,c.score-FLOOR)*g):c.score; } } }
+  }
+  if(res.facialTransformationMatrixes && res.facialTransformationMatrixes.length && headNode){
+    const m=new THREE.Matrix4().fromArray(res.facialTransformationMatrixes[0].data);
+    const p=new THREE.Vector3(), s=new THREE.Vector3(), q=new THREE.Quaternion(); m.decompose(p,q,s);
+    q.y*=-1; q.z*=-1; targetQuat.copy(q);
+  }
+}
+function avatarLoop(){
+  if(!avatarRunning) return;
+  requestAnimationFrame(avatarLoop);
+  const v=$("camVideo");
+  if(v && v.readyState>=2 && faceLandmarker){
+    if(v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime;
+      try{ applyResults(faceLandmarker.detectForVideo(v, performance.now())); }catch(e){} }
+  }
+  if(headNode) headNode.quaternion.slerp(targetQuat, 0.4);
+  renderer.render(scene, camera);
+}
+
+// ===== 声変換 =====
+const voice = new VoiceConverter();
+function applyVoice(){
+  const semi=Number($("pitchRange").value), ft=Number($("formantRange").value);
+  $("pitchVal").textContent=(semi>0?"+":"")+semi+" 半音";
+  $("formantVal").textContent=Math.round(ft*100)+"%";
+  voice.setVoice(semi, ft);
+}
+function presetFromPersona(){ const pre=PERSONAS[$("personaSelect").value]||PERSONAS.none;
+  $("pitchRange").value=pre.p; $("formantRange").value=pre.f; applyVoice(); }
+$("personaSelect").addEventListener("change", presetFromPersona);
+$("pitchRange").addEventListener("input", applyVoice);
+$("formantRange").addEventListener("input", applyVoice);
+
+// ===== 認証・通話 =====
+let lkRoom=null, localTracks=[], camStream=null, canvasStream=null;
+
+onAuthStateChanged(auth, (user)=>{
+  if(user){ $("userinfo").textContent=user.email||""; $("loginBtn").classList.add("hidden"); $("joinBtn").disabled=false;
+    setStatus("ルーム名を看護師役と合わせて「入室する」を押してください。"); }
+  else { $("joinBtn").disabled=true; }
+});
+$("loginBtn").onclick=async()=>{ try{ await signInWithPopup(auth,new GoogleAuthProvider()); }catch(e){ setStatus("ログイン失敗: "+e.message); } };
+
+async function fetchToken(room){
+  const idToken=await getIdToken(auth.currentUser,true);
+  const r=await fetch("/api/peer/token",{ method:"POST", headers:{ "Content-Type":"application/json","Authorization":"Bearer "+idToken }, body:JSON.stringify({room,role:ROLE}) });
+  const data=await r.json(); if(!r.ok) throw new Error(data.error||("HTTP "+r.status)); return data;
+}
+function attachRemoteTrack(track){
+  if(track.kind==="video") track.attach($("remoteVideo"));
+  else if(track.kind==="audio"){ const el=track.attach(); el.id="remoteAudio"; document.body.appendChild(el); }
+}
+
+$("joinBtn").onclick=async()=>{
+  const roomName=$("roomInput").value.trim(); if(!roomName){ setStatus("ルーム名を入力してください"); return; }
+  $("joinBtn").disabled=true;
+  try{
+    setStatus("カメラ・マイクを取得中...");
+    camStream=await navigator.mediaDevices.getUserMedia({ video:{width:{ideal:640},height:{ideal:480},facingMode:'user'}, audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:false} });
+    $("camVideo").srcObject=new MediaStream(camStream.getVideoTracks()); await $("camVideo").play();
+
+    setStatus("アバターと表情認識を準備中...(初回は数十秒)");
+    initThree(); await loadAvatar(); await initFace();
+    avatarRunning=true; avatarLoop();
+
+    setStatus("声変換を準備中...");
+    const micStream=new MediaStream(camStream.getAudioTracks());
+    const voiceTrack=await voice.start(micStream); applyVoice();
+
+    canvasStream=$("avatarCanvas").captureStream(30);
+    const avatarVideoTrack=canvasStream.getVideoTracks()[0];
+    localTracks=[avatarVideoTrack, voiceTrack];
+
+    setStatus("接続情報を取得中...");
+    const { url, token }=await fetchToken(roomName);
+    setStatus("通話サーバへ接続中...");
+    lkRoom=new LivekitClient.Room({ adaptiveStream:true, dynacast:true });
+    lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,(t)=>attachRemoteTrack(t));
+    lkRoom.on(LivekitClient.RoomEvent.ParticipantConnected,(p)=>setStatus("相手が入室しました: "+(p.name||p.identity)));
+    lkRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected,()=>setStatus("相手が退室しました。"));
+    lkRoom.on(LivekitClient.RoomEvent.Disconnected,()=>setStatus("切断されました。"));
+    await lkRoom.connect(url, token);
+    for(const t of localTracks){
+      await lkRoom.localParticipant.publishTrack(t, t.kind==="video"?{ videoCodec:"vp9", videoEncoding:{ maxBitrate:1_800_000, maxFramerate:30 } }:undefined);
+    }
+    $("leaveBtn").classList.remove("hidden");
+    const others=lkRoom.remoteParticipants?lkRoom.remoteParticipants.size:0;
+    setStatus("入室しました(ルーム: "+roomName+")。"+(others?"相手は入室済みです。":"看護師役の入室を待っています..."));
+  }catch(e){ console.error(e); setStatus("エラー: "+(e&&e.message?e.message:e)); $("joinBtn").disabled=false; }
+};
+
+$("leaveBtn").onclick=async()=>{
+  try{ if(lkRoom) await lkRoom.disconnect(); }catch(e){}
+  avatarRunning=false;
+  try{ voice.stop(); }catch(e){}
+  localTracks.forEach(t=>t.stop()); localTracks=[];
+  if(canvasStream){ canvasStream.getTracks().forEach(t=>t.stop()); canvasStream=null; }
+  if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  $("camVideo").srcObject=null;
+  const ra=$("remoteAudio"); if(ra) ra.remove();
+  $("leaveBtn").classList.add("hidden"); $("joinBtn").disabled=false;
+  setStatus("退室しました。");
+};
+</script>
+</body>
+</html>
