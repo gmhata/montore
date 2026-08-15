@@ -36,6 +36,10 @@
   .videobox video, .videobox canvas { width: 100%; height: 100%; object-fit: contain; background:#000; display:block; }
   .videobox .tag { position: absolute; left: 10px; top: 10px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; padding: 3px 10px; border-radius: 4px; z-index: 2; }
   .hidden { display: none !important; }
+  /* v4.70 患者役専用ブロック */
+  .patientonly { border:2px solid #f8bbd0; background:#fff5fa; border-radius:12px; padding:14px 16px; margin-top:14px; }
+  .patientonly .po-title { font-weight:700; color:#c2185b; font-size:13px; margin-bottom:8px; }
+  .patientonly .po-ue { font-size:13px; color:#6b2b52; margin-top:10px; }
 </style>
 </head>
 <body>
@@ -52,10 +56,10 @@
     <div id="loginMsg">ログイン状態を確認中...</div>
   </div>
 
-  <!-- 役割選択 -->
+  <!-- 役割選択  v4.70: UI整理・患者役設定をグルーピング -->
   <div class="panel hidden" id="rolePanel">
     <div class="row" style="justify-content:space-between;">
-      <div><b>このルームで役割を選んでください</b>（同じ相手のまま、あとで「役割を交代」できます）</div>
+      <div><b>役割を選んでください</b></div>
     </div>
     <div class="row voicerow">
       <label>カメラ: <select id="cameraSelect"><option value="">既定のカメラ</option></select></label>
@@ -64,14 +68,16 @@
     <div class="rolepick">
       <div class="rolecard" id="pickNurse">
         <div class="t">看護師役で開始</div>
-        <div class="d">あなたの実写カメラ・実声で参加。相手（患者役）のアバターと対話します。</div>
+        <div class="d">実写のカメラ・声で参加します。</div>
       </div>
       <div class="rolecard" id="pickPatient">
-        <div class="t">患者役で開始（UE不要）</div>
-        <div class="d">Webカメラの表情がリアルな3Dアバターに反映。声はペルソナに変換して届きます。下で声を選べます。</div>
+        <div class="t">患者役で開始</div>
+        <div class="d">Webカメラの表情がアバターに反映されます。</div>
       </div>
     </div>
-    <div class="voicerow row" id="voiceControls">
+    <div class="patientonly" id="patientSettings">
+      <div class="po-title">🩺 患者役の設定（看護師役では不要）</div>
+      <div class="voicerow row" id="voiceControls">
       <label>患者の声(ペルソナ):
         <select id="personaSelect">
           <option value="none">なし(原声)</option>
@@ -81,9 +87,10 @@
       </label>
       <label style="display:flex;align-items:center;gap:6px;">高さ<input type="range" id="pitchRange" min="-12" max="12" step="1" value="0" style="width:120px;"><span id="pitchVal" style="font-size:12px;width:60px;">0 半音</span></label>
       <label style="display:flex;align-items:center;gap:6px;">太さ<input type="range" id="formantRange" min="0.70" max="1.40" step="0.01" value="1.00" style="width:120px;"><span id="formantVal" style="font-size:12px;width:48px;">100%</span></label>
-      <span style="font-size:12px;color:#78909c;">患者役のときに使います（「患者役で開始」を押す前にここで選んでください）</span>
+      
     </div>
-    <div class="note">UE版（先生のデモ用・写真級MetaHuman）を使う場合は <a id="ueLink" href="#">こちら</a>。</div>
+    <div class="po-ue">UE版（先生のデモ用・写真級）: <a id="ueLink" href="#">こちら</a></div>
+    </div>
     <div id="status2" style="font-size:13px;color:#607d8b;margin-top:10px;"></div>
   </div>
 
