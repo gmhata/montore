@@ -57,6 +57,8 @@
       <div class="row"><label>フレーム</label><input type="range" id="frameZoom" min="0.7" max="2.2" step="0.05" value="1.15"><span class="val" id="frameZoomV">1.15</span></div>
       <div class="row"><label>反応 <span class="tag">(小=なめらか)</span></label><input type="range" id="lerp" min="0.1" max="0.8" step="0.02" value="0.4"><span class="val" id="lerpV">0.40</span></div>
       <div class="row"><label><input type="checkbox" id="handSwap"> 手の左右入替</label><label><input type="checkbox" id="faceBack"> 後ろ向きなら反転</label></div>
+      <div class="row tag">腕の較正（自然になる組合せを探す）:</div>
+      <div class="row"><label><input type="checkbox" id="flipX"> 左右</label><label><input type="checkbox" id="flipY" checked> 上下</label><label><input type="checkbox" id="flipZ"> 前後</label></div>
     </div>
     <div id="status">準備OK。「カメラで開始」を押してください。</div>
     <div class="hint">※Kalidokitで全身を解いて反映します。腕がプルプルする→「反応」を小さく。手の左右が逆→「手の左右入替」。アバターが後ろを向く→「後ろ向きなら反転」。</div>
@@ -170,7 +172,9 @@ function animate(face,pose,hands,imgW,imgH){
   const amt=parseFloat($("lerp").value);
   let riggedPose=null;
   if(pose && pose.worldLandmarks && pose.worldLandmarks[0] && $("poseOn").checked){
-    riggedPose=Kalidokit.Pose.solve(pose.worldLandmarks[0], pose.landmarks[0], {runtime:'mediapipe', imageSize:{width:imgW,height:imgH}, enableLegs:false});
+    const fx=$("flipX").checked?-1:1, fy=$("flipY").checked?-1:1, fz=$("flipZ").checked?-1:1;
+    const w3=pose.worldLandmarks[0].map(p=>({x:fx*p.x, y:fy*p.y, z:fz*p.z, visibility:p.visibility}));
+    riggedPose=Kalidokit.Pose.solve(w3, pose.landmarks[0], {runtime:'mediapipe', imageSize:{width:imgW,height:imgH}, enableLegs:false});
     if(riggedPose){
       rigRot("Chest", riggedPose.Spine, 0.25, amt); rigRot("Spine", riggedPose.Spine, 0.45, amt);
       rigRot("RightUpperArm", riggedPose.RightUpperArm, 1, amt); rigRot("RightLowerArm", riggedPose.RightLowerArm, 1, amt);
