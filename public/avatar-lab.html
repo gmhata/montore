@@ -3,257 +3,260 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>アバター調整ラボ(VRM) — PeerMontore</title>
+<title>アバター調整ラボ 統合版 — PeerMontore</title>
 <style>
-  body { font-family: system-ui, "Hiragino Kaku Gothic ProN","Meiryo",sans-serif; margin:0; background:#0f1216; color:#e6edf3; }
-  header { background:#4527a0; color:#fff; padding:10px 18px; } header h1 { font-size:16px; margin:0; }
-  .wrap { display:flex; gap:18px; padding:16px; flex-wrap:wrap; align-items:flex-start; }
-  .col { display:flex; flex-direction:column; gap:12px; }
-  .stage { background:#111; border-radius:12px; overflow:hidden; position:relative; }
-  #avatarCanvas { display:block; background:#1a1f26; }
+  body { font-family: system-ui,"Meiryo",sans-serif; margin:0; background:#0f1216; color:#e6edf3; }
+  header { background:#4527a0; color:#fff; padding:10px 18px; } header h1 { font-size:15px; margin:0; }
+  .wrap { display:flex; gap:16px; padding:14px; flex-wrap:wrap; align-items:flex-start; }
+  .col { display:flex; flex-direction:column; gap:10px; }
+  .stage { background:#111; border-radius:12px; position:relative; overflow:hidden; }
+  #avatarCanvas { display:block; background:#12161c; }
   #hud { position:absolute; left:8px; top:8px; font-size:11px; line-height:1.5; background:rgba(0,0,0,.55); padding:6px 8px; border-radius:6px; color:#9fe6b0; white-space:pre; pointer-events:none; }
   .selfie { position:relative; width:320px; height:240px; background:#000; border-radius:10px; overflow:hidden; }
   #selfVideo,#poseOverlay { position:absolute; left:0; top:0; width:320px; height:240px; }
   #selfVideo { transform:scaleX(-1); object-fit:cover; }
-  .selfcap { font-size:11px; color:#8b949e; margin-top:4px; }
+  .cap { font-size:11px; color:#8b949e; margin-top:4px; }
   .panel { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:14px 16px; min-width:300px; max-width:360px; }
-  .panel h2 { font-size:13px; margin:0 0 10px; color:#c9d1d9; }
-  .row { display:flex; align-items:center; gap:8px; margin:8px 0; flex-wrap:wrap; }
+  .panel h2 { font-size:13px; margin:0 0 8px; color:#c9d1d9; }
+  .row { display:flex; align-items:center; gap:8px; margin:7px 0; flex-wrap:wrap; }
   label { font-size:13px; }
-  select,button { font-size:14px; padding:7px 10px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer; }
+  select,button { font-size:14px; padding:6px 9px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer; }
   button.primary { background:#4527a0; border-color:#4527a0; color:#fff; }
-  button:disabled { opacity:.5; cursor:default; }
-  input[type=range] { width:150px; }
-  .val { font-size:12px; color:#8b949e; width:48px; display:inline-block; }
-  .hint { font-size:12px; color:#8b949e; line-height:1.6; margin-top:10px; }
-  .tag { font-size:12px; color:#8b949e; }
-  #status { font-size:12px; color:#8b949e; margin-top:8px; white-space:pre-wrap; min-height:32px; }
-  .sec { border-top:1px solid #30363d; margin-top:12px; padding-top:10px; }
+  input[type=range]{ width:140px; } .val{ font-size:12px; color:#8b949e; width:44px; display:inline-block; }
+  #status { font-size:12px; color:#8b949e; margin-top:8px; white-space:pre-wrap; min-height:30px; }
+  .sec { border-top:1px solid #30363d; margin-top:10px; padding-top:8px; }
+  .tag{ font-size:12px;color:#8b949e; }
 </style>
 </head>
 <body>
-<header><h1>アバター調整ラボ VRM（Kalidokit：腕・ひじ・指・顔）</h1></header>
+<header><h1>統合ラボ：RPM顔(ARKit) ＋ 指/腕(live_avatar方式)</h1></header>
 <div class="wrap">
   <div class="col">
-    <div class="stage"><canvas id="avatarCanvas" width="480" height="600"></canvas><div id="hud">起動前</div></div>
-    <div>
-      <div class="selfie"><video id="selfVideo" autoplay playsinline muted></video><canvas id="poseOverlay" width="320" height="240"></canvas></div>
-      <div class="selfcap">↑ 自分ビュー：緑=腕。肩・ひじ・手首・手が写るように座ってください。</div>
-    </div>
+    <div class="stage"><canvas id="avatarCanvas" width="460" height="580"></canvas><div id="hud">起動前</div></div>
+    <div><div class="selfie"><video id="selfVideo" autoplay playsinline muted></video><canvas id="poseOverlay" width="320" height="240"></canvas></div>
+      <div class="cap">↑ 肩・ひじ・手首・手が写るように座る</div></div>
   </div>
   <div class="panel">
-    <h2>① キャラ（声）</h2>
-    <div class="row"><label>声:
-      <select id="charSelect">
-        <option value="none">なし(原声)</option><option value="kd">高齢男性</option><option value="cd">中年男性</option><option value="jd">若年男性</option>
-        <option value="kj">高齢女性</option><option value="cj">中年女性</option><option value="jj" selected>若年女性</option>
-      </select></label></div>
-    <div class="row tag" id="voiceInfo">声プリセット: —</div>
-    <div class="sec"><h2>② 開始</h2>
-      <div class="row"><button class="primary" id="startBtn">カメラで開始</button><button id="voiceBtn" disabled>声を試す(要ヘッドホン)</button></div>
+    <h2>① 声</h2>
+    <div class="row"><select id="charSelect">
+      <option value="none">なし(原声)</option><option value="kd">高齢男性</option><option value="cd">中年男性</option><option value="jd">若年男性</option>
+      <option value="kj">高齢女性</option><option value="cj">中年女性</option><option value="jj" selected>若年女性</option></select>
+      <span class="tag" id="voiceInfo"></span></div>
+    <div class="sec"><h2>② 開始</h2><div class="row"><button class="primary" id="startBtn">カメラで開始</button><button id="voiceBtn" disabled>声を試す</button></div></div>
+    <div class="sec"><h2>③ 表示</h2>
+      <div class="row"><label><input type="checkbox" id="faceOn" checked> 顔</label><label><input type="checkbox" id="armOn" checked> 腕</label><label><input type="checkbox" id="fingerOn" checked> 指</label></div>
+      <div class="row"><label>フレーム</label><input type="range" id="frameZoom" min="0.8" max="2.2" step="0.05" value="1.25"><span class="val" id="frameZoomV">1.25</span></div>
     </div>
-    <div class="sec"><h2>③ 表示・調整</h2>
-      <div class="row"><label><input type="checkbox" id="faceOn" checked> 顔</label><label><input type="checkbox" id="poseOn" checked> 腕</label><label><input type="checkbox" id="fingersOn" checked> 指</label></div>
-      <div class="row"><label>フレーム</label><input type="range" id="frameZoom" min="0.7" max="2.2" step="0.05" value="1.15"><span class="val" id="frameZoomV">1.15</span></div>
-      <div class="row"><label>反応 <span class="tag">(小=なめらか)</span></label><input type="range" id="lerp" min="0.1" max="0.8" step="0.02" value="0.4"><span class="val" id="lerpV">0.40</span></div>
-      <div class="row"><label><input type="checkbox" id="handSwap"> 手の左右入替</label><label><input type="checkbox" id="faceBack"> 後ろ向きなら反転</label></div>
-      <div class="row tag">腕の較正（自然になる組合せを探す）:</div>
-      <div class="row"><label><input type="checkbox" id="flipX"> 左右</label><label><input type="checkbox" id="flipY" checked> 上下</label><label><input type="checkbox" id="flipZ"> 前後</label></div>
+    <div class="sec"><h2>④ 指の較正（逆なら切替）</h2>
+      <div class="row"><label>曲げ強さ</label><input type="range" id="fingerGain" min="0" max="2" step="0.05" value="1.0"><span class="val" id="fingerGainV">1.00</span></div>
+      <div class="row"><label>軸</label><select id="fingerAxis"><option value="z">Z（既定）</option><option value="x">X</option></select>
+        <label>符号L<button id="signL" class="tag" type="button">−</button></label><label>符号R<button id="signR" class="tag" type="button">＋</button></label></div>
+      <div class="row"><label><input type="checkbox" id="handSwap"> 手の左右入替</label></div>
+    </div>
+    <div class="sec"><h2>⑤ 腕</h2>
+      <div class="row"><label>なめらかさ</label><input type="range" id="armSmooth" min="0.05" max="0.4" step="0.01" value="0.12"><span class="val" id="armSmoothV">0.12</span></div>
+      <div class="row"><label><input type="checkbox" id="armSwap" checked> 腕の左右入替</label></div>
     </div>
     <div id="status">準備OK。「カメラで開始」を押してください。</div>
-    <div class="hint">※Kalidokitで全身を解いて反映します。腕がプルプルする→「反応」を小さく。手の左右が逆→「手の左右入替」。アバターが後ろを向く→「後ろ向きなら反転」。</div>
+    <div class="cap">指が逆に曲がる→「符号L/R」を切替か「軸」をXに。手が反対→「手の左右入替」。腕が反対→「腕の左右入替」。</div>
   </div>
 </div>
 
 <script type="importmap">
-{ "imports": {
-  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-} }
+{ "imports": { "three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/" } }
 </script>
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { VRMLoaderPlugin, VRMUtils } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js';
 import { FaceLandmarker, PoseLandmarker, HandLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
-import * as Kalidokit from 'https://cdn.jsdelivr.net/npm/kalidokit@1.1/dist/kalidokit.es.js';
 import { VoiceConverter, PERSONAS } from '/peer-voice.js';
 
-const $=(id)=>document.getElementById(id);
-const setStatus=(m)=>{ $("status").textContent=m; };
-function banner(msg){ let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;top:0;right:0;z-index:9999;background:#b71c1c;color:#fff;font:13px/1.5 system-ui;padding:8px 12px;white-space:pre-wrap'; document.body.appendChild(b);} b.textContent='⚠ '+msg; }
-window.addEventListener('error', e=>banner((e.message||'error')+'  @'+(e.filename||'').split('/').pop()+':'+e.lineno));
-window.addEventListener('unhandledrejection', e=>banner('promise: '+((e.reason&&e.reason.message)||e.reason)));
+const $=id=>document.getElementById(id);
+const setStatus=m=>{ $("status").textContent=m; };
+function banner(m){ let b=$("errbar"); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;top:0;right:0;z-index:9;background:#b71c1c;color:#fff;font:13px system-ui;padding:8px 12px'; document.body.appendChild(b);} b.textContent='⚠ '+m; }
+window.addEventListener('error',e=>banner((e.message||'err')+' @'+(e.filename||'').split('/').pop()+':'+e.lineno));
 
 function voiceOf(id){ return PERSONAS[id]||PERSONAS.none; }
-function showVoiceInfo(id){ const v=voiceOf(id); $("voiceInfo").textContent=`声プリセット: ピッチ ${v.p>0?'+':''}${v.p}半音 / 太さ ${Math.round(v.f*100)}%`; }
+function showVoice(id){ const v=voiceOf(id); $("voiceInfo").textContent=`ピッチ${v.p>0?'+':''}${v.p} 太さ${Math.round(v.f*100)}%`; }
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,t)=>a+(b-a)*t;
 
-let renderer,scene,camera,clock,vrm=null;
-let faceLM=null,poseLM=null,handLM=null;
-let running=false,lastT=-1;
-let lastPose=null,fc=0,pc=0,hc=0,fpsT=performance.now(),fpsN=0,fps=0,gripInfo="";
-const clamp=Kalidokit.Utils.clamp, klerp=Kalidokit.Vector.lerp;
+/* ===== 顔(ARKit) : 元の方式 ===== */
+function canon(s){ return String(s).toLowerCase().replace(/left$/,'l').replace(/right$/,'r').replace(/[^a-z0-9]/g,''); }
+const FLOOR=0.03, GAIN={};
+(function(){ const set=(n,g)=>GAIN[canon(n)]=g;
+ [['eyeBlinkLeft',3.2],['eyeBlinkRight',3.2],['eyeLookInLeft',2.6],['eyeLookOutLeft',2.6],['eyeLookUpLeft',2.6],['eyeLookDownLeft',2.6],['eyeLookInRight',2.6],['eyeLookOutRight',2.6],['eyeLookUpRight',2.6],['eyeLookDownRight',2.6],['eyeSquintLeft',2.4],['eyeSquintRight',2.4],['eyeWideLeft',2.4],['eyeWideRight',2.4],['cheekPuff',4.5],['cheekSquintLeft',2.6],['cheekSquintRight',2.6]].forEach(([n,g])=>set(n,g)); })();
+
+let renderer,scene,camera,root=null,morphMeshes=[],headBone=null,faceLM=null,poseLM=null,handLM=null;
+let running=false,lastT=-1,lastPose=null,fc=0,pc=0,hc=0,fpsT=performance.now(),fpsN=0,fps=0,gripInfo="";
+const targetHead=new THREE.Quaternion(),headRest=new THREE.Quaternion(),headParInv=new THREE.Quaternion(),_wd=new THREE.Quaternion(),_ld=new THREE.Quaternion();
+
+/* ===== 腕/指 : live_avatar方式を移植 ===== */
+const ARM={}; // bones
+let boneAxis={}, armDefaults={};
+let fingerBones={}, fingerDefaults={};
+const _v1=new THREE.Vector3(),_v2=new THREE.Vector3(),_qA=new THREE.Quaternion(),_qB=new THREE.Quaternion();
+// 指スペック: [finger, jointNums, weights, stateKey, axisOverride, fingerSign]
+const FSPEC=[
+ ['Thumb',[1,2,3],[0.9,1.0,0.9],'thumb','y',-1],
+ ['Index',[1,2,3],[1.7,1.7,1.3],'index',null,1],
+ ['Middle',[1,2,3],[1.7,1.7,1.3],'middle',null,1],
+ ['Ring',[1,2,3],[1.7,1.7,1.3],'ring',null,1],
+ ['Pinky',[1,2,3],[1.6,1.6,1.2],'little',null,1],
+];
 
 function initThree(){
   const c=$("avatarCanvas");
-  renderer=new THREE.WebGLRenderer({canvas:c,antialias:true,alpha:false,preserveDrawingBuffer:true});
+  renderer=new THREE.WebGLRenderer({canvas:c,antialias:true,preserveDrawingBuffer:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2)); renderer.setSize(c.width,c.height,false);
-  renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.0;
-  scene=new THREE.Scene(); scene.background=new THREE.Color(0x1a1f26);
-  const pmrem=new THREE.PMREMGenerator(renderer); scene.environment=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
-  camera=new THREE.PerspectiveCamera(26,c.width/c.height,0.1,100); camera.position.set(0,1.3,2.2);
-  const key=new THREE.DirectionalLight(0xffffff,2.2); key.position.set(1,2,2.5); scene.add(key);
-  const fill=new THREE.DirectionalLight(0xdfe8ff,0.6); fill.position.set(-2,1,1.5); scene.add(fill);
-  scene.add(new THREE.AmbientLight(0xffffff,0.5));
-  clock=new THREE.Clock();
+  renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05;
+  scene=new THREE.Scene(); scene.background=new THREE.Color(0x12161c);
+  const pm=new THREE.PMREMGenerator(renderer); scene.environment=pm.fromScene(new RoomEnvironment(),0.04).texture;
+  camera=new THREE.PerspectiveCamera(26,c.width/c.height,0.1,100);
+  const k=new THREE.DirectionalLight(0xfff4e6,1.6); k.position.set(1.2,1.8,2.4); scene.add(k);
+  const f=new THREE.DirectionalLight(0xdfe8ff,0.5); f.position.set(-2,0.6,1.4); scene.add(f);
+  scene.add(new THREE.AmbientLight(0xffffff,0.35));
 }
-
-async function loadVRM(url){
-  const loader=new GLTFLoader(); loader.register(p=>new VRMLoaderPlugin(p));
-  const gltf=await loader.loadAsync(url);
-  vrm=gltf.userData.vrm;
-  VRMUtils.removeUnnecessaryJoints(gltf.scene);
-  vrm.scene.traverse(o=>{ o.frustumCulled=false; });
-  scene.add(vrm.scene);
-  // VRM1は+Z向き。カメラ(+Z)から見て正面になるはずだが、後ろ向きなら反転
-  applyFacing();
+async function loadAvatar(url){
+  if(root){ scene.remove(root); root=null; }
+  const ktx2=new KTX2Loader().setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/').detectSupport(renderer);
+  const gltf=await new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder).loadAsync(url);
+  scene.add(gltf.scene); root=gltf.scene; morphMeshes=[]; headBone=null;
+  gltf.scene.updateMatrixWorld(true);
+  const byName={}; gltf.scene.traverse(o=>{ if(o.isBone) byName[o.name]=o; });
+  const find=(...pats)=>{ for(const n in byName){ const cn=n.toLowerCase(); if(pats.some(p=>cn===p||cn.includes(p))) return byName[n]; } return null; };
+  headBone=byName['Head']||find('head');
+  gltf.scene.traverse(o=>{ if(o.isMesh&&o.morphTargetDictionary&&o.morphTargetInfluences){ const ci={}; for(const [k,i] of Object.entries(o.morphTargetDictionary)) ci[canon(k)]=i; o.userData.canonIndex=ci; morphMeshes.push(o); } });
+  // arms
+  ARM.leftUpperArm=find('leftarm')||byName['LeftArm']; ARM.leftLowerArm=byName['LeftForeArm']||find('leftforearm'); ARM.leftHand=byName['LeftHand'];
+  ARM.rightUpperArm=byName['RightArm']||find('rightarm'); ARM.rightLowerArm=byName['RightForeArm']; ARM.rightHand=byName['RightHand'];
+  const dirToChild=(child,fb)=>{ if(!child) return fb.clone(); const d=child.position.clone(); return d.lengthSq()<1e-10?fb.clone():d.normalize(); };
+  const FX=new THREE.Vector3(1,0,0), NX=new THREE.Vector3(-1,0,0);
+  boneAxis={ leftUpperArm:dirToChild(ARM.leftLowerArm,FX), rightUpperArm:dirToChild(ARM.rightLowerArm,NX), leftLowerArm:dirToChild(ARM.leftHand,FX), rightLowerArm:dirToChild(ARM.rightHand,NX) };
+  armDefaults={}; for(const k of ['leftUpperArm','leftLowerArm','rightUpperArm','rightLowerArm']){ const b=ARM[k]; if(b) armDefaults[k]=b.quaternion.clone(); }
+  // fingers (RPM: LeftHand{Finger}{1..3})
+  fingerBones={}; fingerDefaults={};
+  for(const side of ['Left','Right']) for(const [f,joints] of FSPEC.map(s=>[s[0],s[1]])) for(const j of joints){
+    const nm=side+'Hand'+f+j; const b=byName[nm]; if(b){ fingerBones[side+f+j]=b; fingerDefaults[side+f+j]={x:b.rotation.x,y:b.rotation.y,z:b.rotation.z}; } }
+  if(headBone){ headBone.updateWorldMatrix(true,false); headBone.getWorldQuaternion(headRest); if(headBone.parent){ headBone.parent.getWorldQuaternion(headParInv); headParInv.invert(); } else headParInv.identity(); }
   frameUpper();
 }
-function applyFacing(){ if(vrm) vrm.scene.rotation.y = $("faceBack").checked ? 0 : Math.PI; }
 function frameUpper(){
-  if(!vrm) return; vrm.scene.updateMatrixWorld(true);
-  const box=new THREE.Box3().setFromObject(vrm.scene); const size=new THREE.Vector3(); box.getSize(size);
-  const top=box.max.y, h=Math.max(0.4,size.y);
-  const center=new THREE.Vector3((box.min.x+box.max.x)/2, top-h*0.28, 0);
-  const half=h*0.34*parseFloat($("frameZoom").value);
-  const dist=half/Math.tan((camera.fov*Math.PI/180)/2);
-  camera.position.set(center.x, center.y, dist+0.2);
-  camera.near=0.05; camera.far=100; camera.updateProjectionMatrix();
-  camera.lookAt(center.x, center.y, 0);
+  if(!root) return; root.updateMatrixWorld(true);
+  let head=null,hips=null; root.traverse(o=>{ if(o.isBone){ if(/^Head$/i.test(o.name))head=o; if(/^Hips$/i.test(o.name))hips=o; } });
+  const hp=head?head.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,1.5,0);
+  const hipP=hips?hips.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,0.9,0);
+  const center=hp.clone().lerp(hipP,0.45); const torso=Math.max(0.3,hp.y-hipP.y);
+  const half=torso*1.05*parseFloat($("frameZoom").value); const dist=half/Math.tan((camera.fov*Math.PI/180)/2);
+  camera.position.set(center.x,center.y,center.z+dist); camera.near=Math.max(dist/100,0.01); camera.far=dist*100; camera.updateProjectionMatrix(); camera.lookAt(center.x,center.y,center.z);
 }
 
 async function initModels(){
   const fs=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
-  const mk=async(cls,path,extra)=>{ const o=Object.assign({baseOptions:{modelAssetPath:path,delegate:'GPU'},runningMode:'VIDEO'},extra);
-    try{ return await cls.createFromOptions(fs,o);}catch(e){ o.baseOptions.delegate='CPU'; return await cls.createFromOptions(fs,o);} };
-  faceLM=await mk(FaceLandmarker,'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',{numFaces:1});
-  poseLM=await mk(PoseLandmarker,'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',{numPoses:1,outputSegmentationMasks:false});
+  const mk=async(cls,p,ex)=>{ const o=Object.assign({baseOptions:{modelAssetPath:p,delegate:'GPU'},runningMode:'VIDEO'},ex); try{return await cls.createFromOptions(fs,o);}catch(e){o.baseOptions.delegate='CPU';return await cls.createFromOptions(fs,o);} };
+  faceLM=await mk(FaceLandmarker,'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',{outputFaceBlendshapes:true,outputFacialTransformationMatrixes:true,numFaces:1});
+  poseLM=await mk(PoseLandmarker,'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',{numPoses:1});
   handLM=await mk(HandLandmarker,'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',{numHands:2});
 }
 
-// ===== Kalidokit → VRM 適用 =====
-function rigRot(name, rot={x:0,y:0,z:0}, damp=1, amt=0.3){
-  if(!vrm) return; const bn=name[0].toLowerCase()+name.slice(1);
-  const node=vrm.humanoid.getNormalizedBoneNode(bn); if(!node) return;
-  const e=new THREE.Euler(rot.x*damp, rot.y*damp, rot.z*damp, rot.rotationOrder||'XYZ');
-  node.quaternion.slerp(new THREE.Quaternion().setFromEuler(e), amt);
-}
-let oldLook=new THREE.Euler();
-function rigFace(rf, amt){
-  if(!vrm) return;
-  rigRot("Neck", rf.head, 0.7, amt);
-  const em=vrm.expressionManager; if(!em) return;
-  const eL=klerp(clamp(1-rf.eye.l,0,1), em.getValue('blink')||0, .4);
-  em.setValue('blink', eL);
-  em.setValue('aa', rf.mouth.shape.A); em.setValue('ih', rf.mouth.shape.I);
-  em.setValue('ee', rf.mouth.shape.E); em.setValue('oh', rf.mouth.shape.O); em.setValue('ou', rf.mouth.shape.U);
-  const lookX=rf.pupil.x*0.4, lookY=rf.pupil.y*0.4;
-  oldLook.set(klerp(oldLook.x,lookY, .4), klerp(oldLook.y,lookX, .4), 0, 'XYZ');
-  if(vrm.lookAt){ /* pupil approx via head already */ }
-}
-const FING=['RingProximal','RingIntermediate','RingDistal','IndexProximal','IndexIntermediate','IndexDistal','MiddleProximal','MiddleIntermediate','MiddleDistal','ThumbProximal','ThumbIntermediate','ThumbDistal','LittleProximal','LittleIntermediate','LittleDistal'];
-function rigHand(side, rh, poseHand, amt){
-  rigRot(side+"Hand", { z:(poseHand&&poseHand.z)||0, y:rh[side+"Wrist"].y, x:rh[side+"Wrist"].x }, 1, amt);
-  for(const f of FING){ const k=side+f; if(rh[k]) rigRot(k, rh[k], 1, amt); }
+function applyFace(res){
+  if(res.faceBlendshapes&&res.faceBlendshapes.length){ fc++; const cats=res.faceBlendshapes[0].categories;
+    for(const m of morphMeshes){ const ci=m.userData.canonIndex, inf=m.morphTargetInfluences;
+      for(const c of cats){ if(c.categoryName==='_neutral')continue; const cn=canon(c.categoryName), idx=ci[cn]; if(idx!==undefined){ const g=GAIN[cn]; inf[idx]=g?Math.min(1,Math.max(0,c.score-FLOOR)*g):c.score; } } } }
+  if(res.facialTransformationMatrixes&&res.facialTransformationMatrixes.length){ const m=new THREE.Matrix4().fromArray(res.facialTransformationMatrixes[0].data); const p=new THREE.Vector3(),s=new THREE.Vector3(),q=new THREE.Quaternion(); m.decompose(p,q,s); q.y*=-1; q.z*=-1; targetHead.copy(q); }
 }
 
-function animate(face,pose,hands,imgW,imgH){
-  const amt=parseFloat($("lerp").value);
-  let riggedPose=null;
-  if(pose && pose.worldLandmarks && pose.worldLandmarks[0] && $("poseOn").checked){
-    const fx=$("flipX").checked?-1:1, fy=$("flipY").checked?-1:1, fz=$("flipZ").checked?-1:1;
-    const w3=pose.worldLandmarks[0].map(p=>({x:fx*p.x, y:fy*p.y, z:fz*p.z, visibility:p.visibility}));
-    riggedPose=Kalidokit.Pose.solve(w3, pose.landmarks[0], {runtime:'mediapipe', imageSize:{width:imgW,height:imgH}, enableLegs:false});
-    if(riggedPose){
-      rigRot("Chest", riggedPose.Spine, 0.25, amt); rigRot("Spine", riggedPose.Spine, 0.45, amt);
-      rigRot("RightUpperArm", riggedPose.RightUpperArm, 1, amt); rigRot("RightLowerArm", riggedPose.RightLowerArm, 1, amt);
-      rigRot("LeftUpperArm", riggedPose.LeftUpperArm, 1, amt); rigRot("LeftLowerArm", riggedPose.LeftLowerArm, 1, amt);
-    }
+/* --- 腕: shapeWorldDir で後ろ飛び防止（live_avatar移植） --- */
+const KNEE=0.25,CAP=0.40;
+function shapeWorldDir(v){ if(v.z<0){ v.z=0; return v; } let z=v.z; if(z>KNEE){ const over=z-KNEE, range=CAP-KNEE; z=KNEE+range*(1-1/(1+over/range)); } v.z=z; return v; }
+function poseDirToWorld(from,to,out){ out.set(to.x-from.x, -(to.y-from.y), -(to.z-from.z)); return out; }
+function aimBone(bone,defDir,worldDir,smooth){ if(!bone||!bone.parent) return; const len=worldDir.length(); if(len<1e-5) return; bone.parent.updateWorldMatrix(true,false); bone.parent.getWorldQuaternion(_qA); _qA.invert(); _v2.copy(worldDir).divideScalar(len).applyQuaternion(_qA); _qB.setFromUnitVectors(defDir,_v2); bone.quaternion.slerp(_qB,smooth); }
+function applyArms(res){
+  const L=res.landmarks&&res.landmarks[0]; if(!L) return; pc++;
+  const sm=parseFloat($("armSmooth").value);
+  // avatar side ← person landmarks (mirror). armSwap で入替
+  let map = $("armSwap").checked ? {left:[12,14,16],right:[11,13,15]} : {left:[11,13,15],right:[12,14,16]};
+  for(const side of ['left','right']){
+    const [sI,eI,wI]=map[side]; const up=ARM[side+'UpperArm'], lo=ARM[side+'LowerArm']; if(!up||!lo) continue;
+    if((L[sI].visibility??1)<0.3){ if(armDefaults[side+'UpperArm']) up.quaternion.slerp(armDefaults[side+'UpperArm'],sm); if(armDefaults[side+'LowerArm']) lo.quaternion.slerp(armDefaults[side+'LowerArm'],sm); continue; }
+    const sh=L[sI],el=L[eI],wr=L[wI];
+    const uw=shapeWorldDir(poseDirToWorld(sh,el,new THREE.Vector3()));
+    aimBone(up, boneAxis[side+'UpperArm'], uw, sm); up.updateWorldMatrix(true,true);
+    const lw=shapeWorldDir(poseDirToWorld(el,wr,new THREE.Vector3()));
+    aimBone(lo, boneAxis[side+'LowerArm'], lw, sm); lo.updateWorldMatrix(true,false);
   }
-  if(hands && hands.landmarks && hands.landmarks.length && $("fingersOn").checked){
-    const parts=[];
-    for(let k=0;k<hands.landmarks.length;k++){
-      let lbl=(hands.handednesses&&hands.handednesses[k]&&hands.handednesses[k][0])?hands.handednesses[k][0].categoryName:'Right';
-      let side=(lbl==='Left')?'Left':'Right'; if($("handSwap").checked) side=(side==='Left')?'Right':'Left';
-      const rh=Kalidokit.Hand.solve(hands.landmarks[k], side);
-      if(rh){ rigHand(side, rh, riggedPose&&riggedPose[side+"Hand"], amt); parts.push(side); }
-    }
-    gripInfo=parts.join(' ')||'-';
+}
+
+/* --- 指: 関節ごとのカール（live_avatar移植） --- */
+function computeFingerState(pts){
+  if(!pts||pts.length<21) return null; const d=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+  const curl=(m,p,dp,t)=>{ const ext=d(pts[m],pts[p])+d(pts[p],pts[dp])+d(pts[dp],pts[t]); return clamp((1-d(pts[m],pts[t])/Math.max(ext*0.8,0.001))*3.0,0,1); };
+  const palmW=Math.max(0.001,d(pts[5],pts[17]));
+  return { thumb:clamp((1-d(pts[4],pts[9])/Math.max(palmW*1.4,0.001))*1.6,0,1), index:curl(5,6,7,8), middle:curl(9,10,11,12), ring:curl(13,14,15,16), little:curl(17,18,19,20) };
+}
+function applyFingerCurl(Side,state,sign,axis,gain){
+  const defAxis = axis==='x'?'x':'z';
+  for(const [f,joints,weights,key,axisOv,fsign] of FSPEC){
+    const axisKey=axisOv??defAxis; const others=axisKey==='x'?['y','z']:axisKey==='y'?['x','z']:['x','y'];
+    const cv=state?.[key]??0;
+    joints.forEach((j,ji)=>{ const b=fingerBones[Side+f+j], def=fingerDefaults[Side+f+j]; if(!b||!def) return;
+      const tgt=def[axisKey]+sign*fsign*cv*weights[ji]*gain; b.rotation[axisKey]=lerp(b.rotation[axisKey],tgt,0.3);
+      for(const k of others) b.rotation[k]=lerp(b.rotation[k],def[k],0.3); });
   }
-  if(face && face.faceLandmarks && face.faceLandmarks[0] && $("faceOn").checked){
-    const rf=Kalidokit.Face.solve(face.faceLandmarks[0], {runtime:'mediapipe', imageSize:{width:imgW,height:imgH}});
-    if(rf) rigFace(rf, amt);
+}
+function applyHands(res){
+  const L=res.landmarks; if(!L||!L.length) return; hc++;
+  const gain=parseFloat($("fingerGain").value), axis=$("fingerAxis").value;
+  const signL=$("signL").dataset.v==='+'?1:-1, signR=$("signR").dataset.v==='+'?1:-1;
+  const hd=res.handednesses||res.handedness; const parts=[];
+  for(let k=0;k<L.length;k++){
+    let lbl=(hd&&hd[k]&&hd[k][0])?hd[k][0].categoryName:'Right';
+    let side=(lbl==='Left')?'Left':'Right'; if($("handSwap").checked) side=(side==='Left')?'Right':'Left';
+    const st=computeFingerState(L[k]); applyFingerCurl(side, st, side==='Left'?signL:signR, axis, gain); parts.push(side);
   }
+  gripInfo=parts.join(' ')||'-';
 }
 
 const CONN=[[11,12],[11,13],[13,15],[12,14],[14,16]];
-function drawOverlay(){
-  const cv=$("poseOverlay"),ctx=cv.getContext('2d'); ctx.clearRect(0,0,cv.width,cv.height);
-  const lm=lastPose&&lastPose.landmarks&&lastPose.landmarks[0]; if(!lm) return;
-  const X=p=>(1-p.x)*cv.width, Y=p=>p.y*cv.height;
-  ctx.lineWidth=3; ctx.strokeStyle='#39d98a'; ctx.fillStyle='#7cf7c0';
-  for(const [a,b] of CONN){ if(lm[a]&&lm[b]){ ctx.beginPath(); ctx.moveTo(X(lm[a]),Y(lm[a])); ctx.lineTo(X(lm[b]),Y(lm[b])); ctx.stroke(); } }
-  for(const i of [11,12,13,14,15,16]){ const p=lm[i]; if(p){ ctx.beginPath(); ctx.arc(X(p),Y(p),4,0,7); ctx.fill(); } }
-}
-function hud(){ fpsN++; const n=performance.now(); if(n-fpsT>500){ fps=Math.round(fpsN*1000/(n-fpsT)); fpsN=0; fpsT=n; }
-  const lm=lastPose&&lastPose.landmarks&&lastPose.landmarks[0];
-  $("hud").textContent=`fps:${fps}\n腕:${lm?'✓':'✗'} 指:${gripInfo}\n顔${fc} 腕${pc} 手${hc}`; }
+function drawOverlay(){ const cv=$("poseOverlay"),ctx=cv.getContext('2d'); ctx.clearRect(0,0,cv.width,cv.height); const lm=lastPose&&lastPose.landmarks&&lastPose.landmarks[0]; if(!lm)return; const X=p=>(1-p.x)*cv.width,Y=p=>p.y*cv.height; ctx.lineWidth=3;ctx.strokeStyle='#39d98a';ctx.fillStyle='#7cf7c0'; for(const[a,b]of CONN){if(lm[a]&&lm[b]){ctx.beginPath();ctx.moveTo(X(lm[a]),Y(lm[a]));ctx.lineTo(X(lm[b]),Y(lm[b]));ctx.stroke();}} for(const i of[11,12,13,14,15,16]){const p=lm[i];if(p){ctx.beginPath();ctx.arc(X(p),Y(p),4,0,7);ctx.fill();}} }
+function hud(){ fpsN++; const n=performance.now(); if(n-fpsT>500){fps=Math.round(fpsN*1000/(n-fpsT));fpsN=0;fpsT=n;} const lm=lastPose&&lastPose.landmarks&&lastPose.landmarks[0]; $("hud").textContent=`fps:${fps}\n腕:${lm?'✓':'✗'} 指:${gripInfo}\n顔${fc} 腕${pc} 手${hc}`; }
 
 function loop(){
-  if(!running) return; requestAnimationFrame(loop);
-  const v=$("selfVideo"), dt=clock.getDelta();
-  if(v && v.readyState>=2 && v.currentTime!==lastT){
-    lastT=v.currentTime; const ts=performance.now(); const iw=v.videoWidth||640, ih=v.videoHeight||480;
-    let face=null,pose=null,hands=null;
-    if($("faceOn").checked && faceLM){ try{ face=faceLM.detectForVideo(v,ts); fc++; }catch(e){} }
-    if($("poseOn").checked && poseLM){ try{ pose=poseLM.detectForVideo(v,ts+0.3); lastPose=pose; pc++; }catch(e){} }
-    if($("fingersOn").checked && handLM){ try{ hands=handLM.detectForVideo(v,ts+0.6); hc++; }catch(e){} }
-    try{ animate(face,pose,hands,iw,ih); }catch(e){ banner('animate: '+(e.message||e)); }
+  if(!running)return; requestAnimationFrame(loop);
+  const v=$("selfVideo");
+  if(v&&v.readyState>=2&&v.currentTime!==lastT){ lastT=v.currentTime; const ts=performance.now();
+    if($("faceOn").checked&&faceLM){ try{ applyFace(faceLM.detectForVideo(v,ts)); }catch(e){} }
+    if($("armOn").checked&&poseLM){ try{ const r=poseLM.detectForVideo(v,ts+0.3); lastPose=r; applyArms(r); }catch(e){} }
+    if($("fingerOn").checked&&handLM){ try{ applyHands(handLM.detectForVideo(v,ts+0.6)); }catch(e){} }
   }
-  if(vrm) vrm.update(dt);
+  if(headBone&&$("faceOn").checked){ _wd.copy(targetHead).multiply(headRest); _ld.copy(headParInv).multiply(_wd); headBone.quaternion.slerp(_ld,0.35); }
   drawOverlay(); hud(); renderer.render(scene,camera);
 }
 
 let voice=null,pa=null;
-async function toggleVoice(){
-  if(voice){ voice.stop(); voice=null; if(pa){pa.pause();pa.srcObject=null;pa=null;} $("voiceBtn").textContent="声を試す(要ヘッドホン)"; return; }
-  try{ const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
-    voice=new VoiceConverter(); const tr=await voice.start(mic); const v=voiceOf($("charSelect").value); voice.setVoice(v.p,v.f);
-    pa=new Audio(); pa.autoplay=true; pa.srcObject=new MediaStream([tr]); pa.play().catch(()=>{}); $("voiceBtn").textContent="声を止める";
-    setStatus("声プレビュー中(ヘッドホン推奨)。");
-  }catch(e){ setStatus("マイク取得失敗: "+e.message); }
-}
+async function toggleVoice(){ if(voice){voice.stop();voice=null;if(pa){pa.pause();pa.srcObject=null;pa=null;}$("voiceBtn").textContent="声を試す";return;}
+  try{ const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}); voice=new VoiceConverter(); const tr=await voice.start(mic); const v=voiceOf($("charSelect").value); voice.setVoice(v.p,v.f); pa=new Audio();pa.autoplay=true;pa.srcObject=new MediaStream([tr]);pa.play().catch(()=>{}); $("voiceBtn").textContent="声を止める"; }catch(e){ setStatus("マイク失敗:"+e.message); } }
 
 async function start(){
-  $("startBtn").disabled=true; setStatus("カメラを準備中…");
-  try{ const st=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480},audio:false});
-    const v=$("selfVideo"); v.srcObject=st; await v.play().catch(()=>{}); }
-  catch(e){ banner("カメラ取得失敗: "+(e.message||e)); setStatus("カメラ取得失敗: "+(e.message||e)); $("startBtn").disabled=false; return; }
-  try{ initThree(); setStatus("VRMアバターを読み込み中…"); await loadVRM('/patient.vrm'); }
-  catch(e){ banner("VRM読込失敗: "+(e.message||e)); }
+  $("startBtn").disabled=true; setStatus("カメラ準備中…");
+  try{ const st=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480},audio:false}); const v=$("selfVideo"); v.srcObject=st; await v.play().catch(()=>{}); }
+  catch(e){ banner("カメラ取得失敗:"+(e.message||e)); setStatus("カメラ取得失敗:"+(e.message||e)); $("startBtn").disabled=false; return; }
+  try{ initThree(); setStatus("アバター読込中…"); await loadAvatar('/avatar-f-brunette.glb'); }catch(e){ banner("アバター読込失敗:"+(e.message||e)); }
   running=true; loop(); $("voiceBtn").disabled=false;
-  setStatus("顔・腕・指のモデルを読み込み中…（初回は数十秒）");
-  try{ await initModels(); }catch(e){ banner("MediaPipe読込失敗: "+(e.message||e)); }
-  setStatus("動作中。腕がプルつく→「反応」を小さく。手が逆→「手の左右入替」。後ろ向き→「後ろ向きなら反転」。");
+  setStatus("顔・腕・指モデル読込中…（初回は数十秒）");
+  try{ await initModels(); }catch(e){ banner("MediaPipe読込失敗:"+(e.message||e)); }
+  setStatus("動作中。指が逆→符号L/R切替か軸X。手が反対→手の左右入替。腕が反対→腕の左右入替。");
 }
 
 $("startBtn").addEventListener("click",start);
 $("voiceBtn").addEventListener("click",toggleVoice);
-$("charSelect").addEventListener("change",()=>{ const id=$("charSelect").value; showVoiceInfo(id); if(voice){ const v=voiceOf(id); voice.setVoice(v.p,v.f);} });
-$("faceBack").addEventListener("change",applyFacing);
-for(const id of ["frameZoom","lerp"]){ const el=$(id),out=$(id+"V"); const u=()=>out.textContent=parseFloat(el.value).toFixed(2); el.addEventListener("input",()=>{u(); if(id==="frameZoom") frameUpper();}); u(); }
-showVoiceInfo($("charSelect").value);
+$("charSelect").addEventListener("change",()=>{ const id=$("charSelect").value; showVoice(id); if(voice){const v=voiceOf(id);voice.setVoice(v.p,v.f);} });
+function wireSign(id,init){ const b=$(id); b.dataset.v=init; b.textContent=init==='+'?'＋':'−'; b.addEventListener('click',()=>{ b.dataset.v=b.dataset.v==='+'?'-':'+'; b.textContent=b.dataset.v==='+'?'＋':'−'; }); }
+wireSign('signL','-'); wireSign('signR','+');
+for(const id of ["frameZoom","fingerGain","armSmooth"]){ const el=$(id),o=$(id+"V"); const u=()=>o.textContent=parseFloat(el.value).toFixed(2); el.addEventListener("input",()=>{u(); if(id==="frameZoom")frameUpper();}); u(); }
+showVoice($("charSelect").value);
 </script>
 </body>
 </html>
