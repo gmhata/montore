@@ -46,10 +46,11 @@
     <div class="sec"><h2>③ 表示</h2>
       <div class="row"><label><input type="checkbox" id="faceOn" checked> 顔</label><label><input type="checkbox" id="armOn" checked> 腕</label><label><input type="checkbox" id="fingerOn" checked> 指</label></div>
       <div class="row"><label>フレーム</label><input type="range" id="frameZoom" min="0.8" max="2.2" step="0.05" value="1.25"><span class="val" id="frameZoomV">1.25</span></div>
+      <div class="row"><label><input type="checkbox" id="headYaw" checked> 顔向き反転</label><label><input type="checkbox" id="headRoll"> 顔かしげ反転</label></div>
     </div>
     <div class="sec"><h2>④ 指の較正（逆なら切替）</h2>
       <div class="row"><label>曲げ強さ</label><input type="range" id="fingerGain" min="0" max="2" step="0.05" value="1.0"><span class="val" id="fingerGainV">1.00</span></div>
-      <div class="row"><label>軸</label><select id="fingerAxis"><option value="z">Z（既定）</option><option value="x">X</option></select>
+      <div class="row"><label>軸</label><select id="fingerAxis"><option value="x">X（既定）</option><option value="z">Z</option></select>
         <label>符号L<button id="signL" class="tag" type="button">−</button></label><label>符号R<button id="signR" class="tag" type="button">＋</button></label></div>
       <div class="row"><label><input type="checkbox" id="handSwap"> 手の左右入替</label></div>
     </div>
@@ -165,7 +166,8 @@ function applyFace(res){
   if(res.faceBlendshapes&&res.faceBlendshapes.length){ fc++; const cats=res.faceBlendshapes[0].categories;
     for(const m of morphMeshes){ const ci=m.userData.canonIndex, inf=m.morphTargetInfluences;
       for(const c of cats){ if(c.categoryName==='_neutral')continue; const cn=canon(c.categoryName), idx=ci[cn]; if(idx!==undefined){ const g=GAIN[cn]; inf[idx]=g?Math.min(1,Math.max(0,c.score-FLOOR)*g):c.score; } } } }
-  if(res.facialTransformationMatrixes&&res.facialTransformationMatrixes.length){ const m=new THREE.Matrix4().fromArray(res.facialTransformationMatrixes[0].data); const p=new THREE.Vector3(),s=new THREE.Vector3(),q=new THREE.Quaternion(); m.decompose(p,q,s); q.y*=-1; q.z*=-1; targetHead.copy(q); }
+  if(res.facialTransformationMatrixes&&res.facialTransformationMatrixes.length){ const m=new THREE.Matrix4().fromArray(res.facialTransformationMatrixes[0].data); const p=new THREE.Vector3(),s=new THREE.Vector3(),q=new THREE.Quaternion(); m.decompose(p,q,s);
+    const e=new THREE.Euler().setFromQuaternion(q,'YXZ'); const yf=$("headYaw").checked?-1:1, rf=$("headRoll").checked?-1:1; e.y*=yf; e.z*=rf; targetHead.setFromEuler(e); }
 }
 
 /* --- 腕: shapeWorldDir で後ろ飛び防止（live_avatar移植） --- */
