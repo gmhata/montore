@@ -129,7 +129,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+import { FaceLandmarker, PoseLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, getIdToken } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import { VoiceConverter, PERSONAS } from '/peer-voice.js';
@@ -221,6 +221,7 @@ async function loadAvatar(url){
   gltf.scene.traverse(o=>{ if(o.isMesh && o.morphTargetDictionary && o.morphTargetInfluences){
     const ci={}; for(const [k,idx] of Object.entries(o.morphTargetDictionary)) ci[canon(k)]=idx; o.userData.canonIndex=ci; morphMeshes.push(o); } });
   frameToHead(gltf.scene);
+  captureArmRest(gltf.scene);
   // 首振り用: Headボーンの静止ワールド姿勢と親の逆姿勢を記録
   if(headBone){
     headBone.updateWorldMatrix(true,false);
@@ -234,6 +235,7 @@ async function initFace(){
   const opts={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate:'GPU' }, outputFaceBlendshapes:true, outputFacialTransformationMatrixes:true, runningMode:'VIDEO', numFaces:1 };
   try { faceLandmarker=await FaceLandmarker.createFromOptions(fileset, opts); }
   catch(e){ opts.baseOptions.delegate='CPU'; faceLandmarker=await FaceLandmarker.createFromOptions(fileset, opts); }
+  try { await initPose(fileset); } catch(e){}
 }
 function applyResults(res){
   if(res.faceBlendshapes && res.faceBlendshapes.length){
@@ -250,10 +252,54 @@ function applyResults(res){
     targetHeadWorld.copy(q);
   }
 }
+// ===== 手・腕トラッキング(MediaPipe Pose) v4.71 : ラボ確定設定(左右入替ON・鏡ON) =====
+let poseLandmarker=null;
+const P_ARMS=['LeftArm','LeftForeArm','RightArm','RightForeArm'];
+const P_CHILD={ LeftArm:'LeftForeArm', LeftForeArm:'LeftHand', RightArm:'RightForeArm', RightForeArm:'RightHand' };
+let armBones={}, restLocalQ={}, restWorldQ={}, restChildDirW={};
+const _pq1=new THREE.Quaternion(),_pq2=new THREE.Quaternion(),_pq3=new THREE.Quaternion(),_pq4=new THREE.Quaternion(),_pq5=new THREE.Quaternion();
+const _pv1=new THREE.Vector3(),_pv2=new THREE.Vector3();
+const ARM_GAIN=1.0, ARM_SMOOTH=0.36;
+async function initPose(fileset){
+  const opts={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate:'GPU' }, runningMode:'VIDEO', numPoses:1, outputSegmentationMasks:false };
+  try { poseLandmarker=await PoseLandmarker.createFromOptions(fileset,opts); }
+  catch(e){ opts.baseOptions.delegate='CPU'; poseLandmarker=await PoseLandmarker.createFromOptions(fileset,opts); }
+}
+function captureArmRest(root){
+  armBones={}; restLocalQ={}; restWorldQ={}; restChildDirW={};
+  const byName={}; root.traverse(o=>{ if(o.isBone) byName[o.name]=o; });
+  for(const n of P_ARMS){ const b=byName[n], c=byName[P_CHILD[n]]; if(!b||!c) continue;
+    armBones[n]=b; restLocalQ[n]=b.quaternion.clone(); restWorldQ[n]=b.getWorldQuaternion(new THREE.Quaternion());
+    const bp=b.getWorldPosition(new THREE.Vector3()), cp=c.getWorldPosition(new THREE.Vector3());
+    restChildDirW[n]=cp.sub(bp).normalize(); }
+}
+function aimArm(name, bone, targetDirW){
+  const q=_pq1.setFromUnitVectors(_pv1.copy(restChildDirW[name]), _pv2.copy(targetDirW).normalize());
+  const newWorld=_pq2.copy(q).multiply(restWorldQ[name]);
+  const parent=bone.parent; parent.updateWorldMatrix(true,false);
+  const pInv=_pq3.copy(parent.getWorldQuaternion(_pq4)).invert();
+  const local=_pq5.copy(pInv).multiply(newWorld);
+  const tgt=new THREE.Quaternion().copy(restLocalQ[name]).slerp(local, ARM_GAIN);
+  bone.quaternion.slerp(tgt, ARM_SMOOTH);
+}
+function applyPose(res){
+  const W=res.worldLandmarks && res.worldLandmarks[0]; if(!W) return;
+  const V=(i)=> new THREE.Vector3(-W[i].x, -W[i].y, -W[i].z);
+  const map={ Left:[12,14,16], Right:[11,13,15] };
+  for(const side of ['Left','Right']){
+    const a=map[side]; const A=armBones[side+'Arm'], F=armBones[side+'ForeArm']; if(!A) continue;
+    const sh=V(a[0]), el=V(a[1]), wr=V(a[2]);
+    aimArm(side+'Arm', A, el.clone().sub(sh)); A.updateWorldMatrix(true,true);
+    if(F){ aimArm(side+'ForeArm', F, wr.clone().sub(el)); F.updateWorldMatrix(true,false); }
+  }
+}
 function avatarLoop(){
   if(!avatarRunning) return; requestAnimationFrame(avatarLoop);
   const v=$("camVideo");
-  if(v && v.readyState>=2 && faceLandmarker){ if(v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; try{ applyResults(faceLandmarker.detectForVideo(v, performance.now())); }catch(e){} } }
+  if(v && v.readyState>=2 && v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; const _ts=performance.now();
+    if(faceLandmarker){ try{ applyResults(faceLandmarker.detectForVideo(v, _ts)); }catch(e){} }
+    if(poseLandmarker){ try{ applyPose(poseLandmarker.detectForVideo(v, _ts+0.5)); }catch(e){} }
+  }
   if(APPLY_HEAD_POSE && headBone){ _wd.copy(targetHeadWorld).multiply(headWorldRest); _ld.copy(headParentWorldInv).multiply(_wd); headBone.quaternion.slerp(_ld, 0.35); }
   renderer.render(scene, camera);
 }
