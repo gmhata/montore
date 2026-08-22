@@ -52,6 +52,7 @@
       <div class="row"><label>曲げ強さ</label><input type="range" id="fingerGain" min="0" max="2" step="0.05" value="1.0"><span class="val" id="fingerGainV">1.00</span></div>
       <div class="row"><label>軸</label><select id="fingerAxis"><option value="x">X（既定）</option><option value="z">Z</option></select>
         <label>指の向き<button id="fingerDir" class="tag" type="button">＋</button></label></div>
+      <div class="row"><label>親指の軸</label><select id="thumbAxis"><option value="x">X</option><option value="z">Z</option><option value="y">Y</option></select><label>親指の向き<button id="thumbDir" class="tag" type="button">＋</button></label></div>
       <div class="row"><label><input type="checkbox" id="handSwap"> 手の左右入替</label></div>
     </div>
     <div class="sec"><h2>⑤ 腕</h2>
@@ -201,11 +202,13 @@ function computeFingerState(pts){
 }
 function applyFingerCurl(Side,state,sign,axis,gain){
   const defAxis = axis==='x'?'x':'z';
-  for(const [f,joints,weights,key,axisOv,fsign] of FSPEC){
-    const axisKey=axisOv??defAxis; const others=axisKey==='x'?['y','z']:axisKey==='y'?['x','z']:['x','y'];
+  const tAxis=$("thumbAxis").value, tSign=$("thumbDir").dataset.v==='+'?1:-1;
+  for(const [f,joints,weights,key] of FSPEC){
+    const isT=f==='Thumb'; const axisKey=isT?tAxis:defAxis; const eff=isT?tSign:sign;
+    const others=axisKey==='x'?['y','z']:axisKey==='y'?['x','z']:['x','y'];
     const cv=state?.[key]??0;
     joints.forEach((j,ji)=>{ const b=fingerBones[Side+f+j], def=fingerDefaults[Side+f+j]; if(!b||!def) return;
-      const tgt=def[axisKey]+sign*fsign*cv*weights[ji]*gain; b.rotation[axisKey]=lerp(b.rotation[axisKey],tgt,0.3);
+      const tgt=def[axisKey]+eff*cv*weights[ji]*gain; b.rotation[axisKey]=lerp(b.rotation[axisKey],tgt,0.3);
       for(const k of others) b.rotation[k]=lerp(b.rotation[k],def[k],0.3); });
   }
 }
@@ -257,7 +260,7 @@ $("startBtn").addEventListener("click",start);
 $("voiceBtn").addEventListener("click",toggleVoice);
 $("charSelect").addEventListener("change",()=>{ const id=$("charSelect").value; showVoice(id); if(voice){const v=voiceOf(id);voice.setVoice(v.p,v.f);} });
 function wireSign(id,init){ const b=$(id); b.dataset.v=init; b.textContent=init==='+'?'＋':'−'; b.addEventListener('click',()=>{ b.dataset.v=b.dataset.v==='+'?'-':'+'; b.textContent=b.dataset.v==='+'?'＋':'−'; }); }
-wireSign('fingerDir','+');
+wireSign('fingerDir','+'); wireSign('thumbDir','+');
 for(const id of ["frameZoom","fingerGain","armSmooth"]){ const el=$(id),o=$(id+"V"); const u=()=>o.textContent=parseFloat(el.value).toFixed(2); el.addEventListener("input",()=>{u(); if(id==="frameZoom")frameUpper();}); u(); }
 showVoice($("charSelect").value);
 </script>
