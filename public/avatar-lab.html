@@ -56,7 +56,7 @@
     </div>
     <div class="sec"><h2>⑤ 腕</h2>
       <div class="row"><label>なめらかさ</label><input type="range" id="armSmooth" min="0.05" max="0.4" step="0.01" value="0.12"><span class="val" id="armSmoothV">0.12</span></div>
-      <div class="row"><label><input type="checkbox" id="armSwap" checked> 腕の左右入替</label></div>
+      <div class="row"><label><input type="checkbox" id="armSwap"> 腕の左右入替</label></div>
     </div>
     <div id="status">準備OK。「カメラで開始」を押してください。</div>
     <div class="cap">指が逆に曲がる→「符号L/R」を切替か「軸」をXに。手が反対→「手の左右入替」。腕が反対→「腕の左右入替」。</div>
@@ -217,7 +217,7 @@ function applyHands(res){
   for(let k=0;k<L.length;k++){
     let lbl=(hd&&hd[k]&&hd[k][0])?hd[k][0].categoryName:'Right';
     let side=(lbl==='Left')?'Left':'Right'; if($("handSwap").checked) side=(side==='Left')?'Right':'Left';
-    const st=computeFingerState(L[k]); applyFingerCurl(side, st, (side==='Left'?-1:1)*g, axis, gain); parts.push(side);
+    const st=computeFingerState(L[k]); applyFingerCurl(side, st, g, axis, gain); parts.push(side);
   }
   gripInfo=parts.join(' ')||'-';
 }
