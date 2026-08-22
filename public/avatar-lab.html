@@ -110,6 +110,9 @@ import { VoiceConverter, PERSONAS } from '/peer-voice.js';
 
 const $ = (id) => document.getElementById(id);
 const setStatus = (m) => { $("status").textContent = m; };
+function banner(msg){ let b=document.getElementById('errbar'); if(!b){ b=document.createElement('div'); b.id='errbar'; b.style.cssText='position:fixed;left:0;top:0;right:0;z-index:9999;background:#b71c1c;color:#fff;font:13px/1.5 system-ui;padding:8px 12px;white-space:pre-wrap'; document.body.appendChild(b);} b.textContent='⚠ '+msg; }
+window.addEventListener('error', e=>banner((e.message||'error')+'  @'+(e.filename||'').split('/').pop()+':'+e.lineno));
+window.addEventListener('unhandledrejection', e=>banner('promise: '+((e.reason&&e.reason.message)||e.reason)));
 
 const DEFAULT_AVATAR = "/avatar-f-brunette.glb";
 const CHARACTERS = {
@@ -197,12 +200,10 @@ function frameUpper(){
   camera.lookAt(center.x, center.y, center.z);
 }
 
-async function initFace(){
-  const fileset=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+async function initFace(fileset){
   const opts={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', delegate:'GPU' }, outputFaceBlendshapes:true, outputFacialTransformationMatrixes:true, runningMode:'VIDEO', numFaces:1 };
   try { faceLandmarker=await FaceLandmarker.createFromOptions(fileset,opts); }
   catch(e){ opts.baseOptions.delegate='CPU'; faceLandmarker=await FaceLandmarker.createFromOptions(fileset,opts); }
-  return fileset;
 }
 async function initPose(fileset){
   const opts={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate:'GPU' }, runningMode:'VIDEO', numPoses:1, outputSegmentationMasks:false };
@@ -307,17 +308,26 @@ async function toggleVoice(){
 
 async function start(){
   $("startBtn").disabled=true; setStatus("カメラとモデルを準備中…");
+  // 1) カメラ（失敗したら中断）
   try{
     const stream=await navigator.mediaDevices.getUserMedia({ video:{ width:640, height:480 }, audio:false });
     const v=$("selfVideo"); v.srcObject=stream; await v.play().catch(()=>{});
-    initThree();
-    setStatus("アバターを読み込み中…"); await loadAvatar(CHARACTERS[$("charSelect").value].avatar);
-    setStatus("顔・手のモデルを読み込み中…（初回は数十秒かかることがあります）");
-    const fileset=await initFace(); await initPose(fileset);
-    running=true; loop();
-    $("voiceBtn").disabled=false;
-    setStatus("動作中。自分ビューに緑スケルトンが出て、手を上げるとアバターの腕が動けばOKです。動かない場合はHUDの『手の検出』を確認してください。");
-  }catch(e){ setStatus("開始に失敗しました: "+e.message); $("startBtn").disabled=false; }
+  }catch(e){ banner("カメラ取得失敗: "+(e.message||e)); setStatus("カメラ取得失敗: "+(e.message||e)); $("startBtn").disabled=false; return; }
+  // 2) アバター（失敗しても続行）
+  try{ initThree(); setStatus("アバターを読み込み中…"); await loadAvatar(CHARACTERS[$("charSelect").value].avatar); }
+  catch(e){ banner("アバター読込失敗: "+(e.message||e)); }
+  // 3) 何があってもレンダリング開始（アバターが見える）
+  running=true; loop(); $("voiceBtn").disabled=false;
+  // 4) 顔・手のモデルを個別に読み込み（片方が失敗しても他は動く）
+  setStatus("顔・手のモデルを読み込み中…（初回は数十秒かかることがあります）");
+  let fileset=null;
+  try{ fileset=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'); }
+  catch(e){ banner("MediaPipe WASM読込失敗: "+(e.message||e)); }
+  if(fileset){
+    try{ await initFace(fileset); }catch(e){ banner("顔モデル失敗: "+(e.message||e)); }
+    try{ await initPose(fileset); }catch(e){ banner("手モデル失敗: "+(e.message||e)); }
+  }
+  setStatus("動作中。手を動かして腕が動くか確認してください。緑スケルトンが出ない場合は上のエラー表示を確認してください。");
 }
 
 $("startBtn").addEventListener("click", start);
