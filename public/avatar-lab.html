@@ -153,9 +153,9 @@ function initThree(){
   const pmrem=new THREE.PMREMGenerator(renderer);
   scene.environment=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
   camera=new THREE.PerspectiveCamera(26, canvas.width/canvas.height, 0.1, 100); camera.position.set(0,0,3);
-  scene.add(Object.assign(new THREE.DirectionalLight(0xfff4e6,1.6),{position:new THREE.Vector3(1.2,1.8,2.4)}));
-  scene.add(Object.assign(new THREE.DirectionalLight(0xdfe8ff,0.5),{position:new THREE.Vector3(-2,0.6,1.4)}));
-  scene.add(Object.assign(new THREE.DirectionalLight(0xffffff,0.7),{position:new THREE.Vector3(-0.5,1.5,-2.5)}));
+  const key=new THREE.DirectionalLight(0xfff4e6,1.6); key.position.set(1.2,1.8,2.4); scene.add(key);
+  const fill=new THREE.DirectionalLight(0xdfe8ff,0.5); fill.position.set(-2,0.6,1.4); scene.add(fill);
+  const rim=new THREE.DirectionalLight(0xffffff,0.7); rim.position.set(-0.5,1.5,-2.5); scene.add(rim);
   scene.add(new THREE.AmbientLight(0xffffff,0.25));
 }
 
