@@ -51,7 +51,7 @@
     <div class="sec"><h2>④ 指の較正（逆なら切替）</h2>
       <div class="row"><label>曲げ強さ</label><input type="range" id="fingerGain" min="0" max="2" step="0.05" value="1.0"><span class="val" id="fingerGainV">1.00</span></div>
       <div class="row"><label>軸</label><select id="fingerAxis"><option value="x">X（既定）</option><option value="z">Z</option></select>
-        <label>符号L<button id="signL" class="tag" type="button">−</button></label><label>符号R<button id="signR" class="tag" type="button">＋</button></label></div>
+        <label>指の向き<button id="fingerDir" class="tag" type="button">＋</button></label></div>
       <div class="row"><label><input type="checkbox" id="handSwap"> 手の左右入替</label></div>
     </div>
     <div class="sec"><h2>⑤ 腕</h2>
@@ -212,12 +212,12 @@ function applyFingerCurl(Side,state,sign,axis,gain){
 function applyHands(res){
   const L=res.landmarks; if(!L||!L.length) return; hc++;
   const gain=parseFloat($("fingerGain").value), axis=$("fingerAxis").value;
-  const signL=$("signL").dataset.v==='+'?1:-1, signR=$("signR").dataset.v==='+'?1:-1;
+  const g=$("fingerDir").dataset.v==='+'?1:-1;
   const hd=res.handednesses||res.handedness; const parts=[];
   for(let k=0;k<L.length;k++){
     let lbl=(hd&&hd[k]&&hd[k][0])?hd[k][0].categoryName:'Right';
     let side=(lbl==='Left')?'Left':'Right'; if($("handSwap").checked) side=(side==='Left')?'Right':'Left';
-    const st=computeFingerState(L[k]); applyFingerCurl(side, st, side==='Left'?signL:signR, axis, gain); parts.push(side);
+    const st=computeFingerState(L[k]); applyFingerCurl(side, st, (side==='Left'?-1:1)*g, axis, gain); parts.push(side);
   }
   gripInfo=parts.join(' ')||'-';
 }
@@ -257,7 +257,7 @@ $("startBtn").addEventListener("click",start);
 $("voiceBtn").addEventListener("click",toggleVoice);
 $("charSelect").addEventListener("change",()=>{ const id=$("charSelect").value; showVoice(id); if(voice){const v=voiceOf(id);voice.setVoice(v.p,v.f);} });
 function wireSign(id,init){ const b=$(id); b.dataset.v=init; b.textContent=init==='+'?'＋':'−'; b.addEventListener('click',()=>{ b.dataset.v=b.dataset.v==='+'?'-':'+'; b.textContent=b.dataset.v==='+'?'＋':'−'; }); }
-wireSign('signL','+'); wireSign('signR','-');
+wireSign('fingerDir','+');
 for(const id of ["frameZoom","fingerGain","armSmooth"]){ const el=$(id),o=$(id+"V"); const u=()=>o.textContent=parseFloat(el.value).toFixed(2); el.addEventListener("input",()=>{u(); if(id==="frameZoom")frameUpper();}); u(); }
 showVoice($("charSelect").value);
 </script>
