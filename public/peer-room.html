@@ -129,7 +129,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { FaceLandmarker, PoseLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+import { FaceLandmarker, PoseLandmarker, HandLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, getIdToken } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
 import { VoiceConverter, PERSONAS } from '/peer-voice.js';
@@ -184,27 +184,19 @@ function initThree(){
   const rim=new THREE.DirectionalLight(0xffffff,0.7); rim.position.set(-0.5,1.5,-2.5); scene.add(rim);
   scene.add(new THREE.AmbientLight(0xffffff,0.25));
 }
-// 頭部(＋首・肩)にフレーミング。全身アバターなので「頭ボーン」の実位置を基準にする
-// (スキン付きメッシュのBox3は原点付近を指すため使わない)。
-const HEAD_ZOOM = 1.3;   // 頭の高さ基準。大=引き(頭+肩が入る)/小=アップ
-const HEAD_DROP = 0.5;   // 中心を下げて首・肩を見せる係数(×頭の高さ)
-function frameToHead(root){
-  root.updateMatrixWorld(true);
-  let head=null, headTop=null;
-  root.traverse(o=>{ if(o.isBone){ if(/^Head$/i.test(o.name)) head=o; if(/HeadTop_End/i.test(o.name)) headTop=o; } });
-  const center=new THREE.Vector3(); let r=0.12;
-  if(head){
-    const hp=head.getWorldPosition(new THREE.Vector3());
-    if(headTop){ const tp=headTop.getWorldPosition(new THREE.Vector3()); r=hp.distanceTo(tp)||0.12; center.copy(hp).lerp(tp,0.5); }
-    else { center.copy(hp); center.y+=r; }
-  } else {
-    const b=new THREE.Box3().setFromObject(root); b.getCenter(center); r=(b.max.y-b.min.y)*0.10; center.y=b.max.y-r;
-  }
-  const cy=center.y - r*HEAD_DROP;
-  const dist=(r*HEAD_ZOOM)/Math.sin((camera.fov*Math.PI/180)/2);
-  camera.position.set(center.x, cy, center.z+dist);
+// 上半身フレーミング(頭〜腰)。手のしぐさが相手に見えるよう引きめ。
+const UP_ZOOM = 1.28;
+function frameUpper(rootObj){
+  rootObj.updateMatrixWorld(true);
+  let head=null, hips=null;
+  rootObj.traverse(o=>{ if(o.isBone){ if(/^Head$/i.test(o.name)) head=o; if(/^Hips$/i.test(o.name)) hips=o; } });
+  const hp = head?head.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,1.5,0);
+  const hipP = hips?hips.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,0.9,0);
+  const center=hp.clone().lerp(hipP,0.45); const torso=Math.max(0.3, hp.y-hipP.y);
+  const half=torso*1.05*UP_ZOOM; const dist=half/Math.tan((camera.fov*Math.PI/180)/2);
+  camera.position.set(center.x, center.y, center.z+dist);
   camera.near=Math.max(dist/100,0.01); camera.far=dist*100; camera.updateProjectionMatrix();
-  camera.lookAt(center.x, cy, center.z);
+  camera.lookAt(center.x, center.y, center.z);
 }
 // ===== ペルソナ→リアルアバター(自ホスト同一オリジンGLB) =====
 // ★同一オリジン配信でCORS/外部ホスト遮断(学内NW等)を回避。暫定は全ペルソナ共通の1体(最終は男女・年齢別に差替)。
@@ -220,8 +212,8 @@ async function loadAvatar(url){
   gltf.scene.traverse(o=>{ if(o.isBone && /^Head$/i.test(o.name)) headBone=o; });
   gltf.scene.traverse(o=>{ if(o.isMesh && o.morphTargetDictionary && o.morphTargetInfluences){
     const ci={}; for(const [k,idx] of Object.entries(o.morphTargetDictionary)) ci[canon(k)]=idx; o.userData.canonIndex=ci; morphMeshes.push(o); } });
-  frameToHead(gltf.scene);
-  captureArmRest(gltf.scene);
+  frameUpper(gltf.scene);
+  captureRig(gltf.scene);
   // 首振り用: Headボーンの静止ワールド姿勢と親の逆姿勢を記録
   if(headBone){
     headBone.updateWorldMatrix(true,false);
@@ -236,6 +228,7 @@ async function initFace(){
   try { faceLandmarker=await FaceLandmarker.createFromOptions(fileset, opts); }
   catch(e){ opts.baseOptions.delegate='CPU'; faceLandmarker=await FaceLandmarker.createFromOptions(fileset, opts); }
   try { await initPose(fileset); } catch(e){}
+  try { await initHands(fileset); } catch(e){}
 }
 function applyResults(res){
   if(res.faceBlendshapes && res.faceBlendshapes.length){
@@ -247,58 +240,72 @@ function applyResults(res){
   if(res.facialTransformationMatrixes && res.facialTransformationMatrixes.length){
     const m=new THREE.Matrix4().fromArray(res.facialTransformationMatrixes[0].data);
     const p=new THREE.Vector3(), s=new THREE.Vector3(), q=new THREE.Quaternion(); m.decompose(p,q,s);
-    q.y*=-1; q.z*=-1;
-    if(HEAD_POSE_GAIN!==1){ const e=new THREE.Euler().setFromQuaternion(q,'YXZ'); e.x*=HEAD_POSE_GAIN; e.y*=HEAD_POSE_GAIN; e.z*=HEAD_POSE_GAIN; q.setFromEuler(e); }
-    targetHeadWorld.copy(q);
+    const eu=new THREE.Euler().setFromQuaternion(q,'YXZ'); eu.y*=-1; targetHeadWorld.setFromEuler(eu);
   }
 }
-// ===== 手・腕トラッキング(MediaPipe Pose) v4.71 : ラボ確定設定(左右入替ON・鏡ON) =====
-let poseLandmarker=null;
-const P_ARMS=['LeftArm','LeftForeArm','RightArm','RightForeArm'];
-const P_CHILD={ LeftArm:'LeftForeArm', LeftForeArm:'LeftHand', RightArm:'RightForeArm', RightForeArm:'RightHand' };
-let armBones={}, restLocalQ={}, restWorldQ={}, restChildDirW={};
-const _pq1=new THREE.Quaternion(),_pq2=new THREE.Quaternion(),_pq3=new THREE.Quaternion(),_pq4=new THREE.Quaternion(),_pq5=new THREE.Quaternion();
-const _pv1=new THREE.Vector3(),_pv2=new THREE.Vector3();
-const ARM_GAIN=1.0, ARM_SMOOTH=0.36;
-async function initPose(fileset){
-  const opts={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate:'GPU' }, runningMode:'VIDEO', numPoses:1, outputSegmentationMasks:false };
-  try { poseLandmarker=await PoseLandmarker.createFromOptions(fileset,opts); }
-  catch(e){ opts.baseOptions.delegate='CPU'; poseLandmarker=await PoseLandmarker.createFromOptions(fileset,opts); }
+// ===== 手・腕・指トラッキング(MediaPipe) : avatar-lab確定方式を移植 =====
+let poseLandmarker=null, handLandmarker=null;
+const ARM_EMA=0.12, ARM_SLERP=0.5;                                    // 確定: なめらかさ0.12・腕入替OFF
+const FINGER_AXIS='x', FINGER_SIGN=1, FINGER_GAIN=1.1, THUMB_HOLD=true; // 確定: 指軸X・向き+・親指固定
+const FSPEC=[ ['Thumb',[1,2,3],[0.5,1.1,0.9],'thumb'], ['Index',[1,2,3],[1.7,1.7,1.3],'index'], ['Middle',[1,2,3],[1.7,1.7,1.3],'middle'], ['Ring',[1,2,3],[1.7,1.7,1.3],'ring'], ['Pinky',[1,2,3],[1.6,1.6,1.2],'little'] ];
+const ARM={}; let boneAxis={}, armDefaults={}, armEMA={};
+let fingerBones={}, fingerDefaults={}, fingerQ={}, thumbFlexAxis={};
+const _q1=new THREE.Quaternion(),_q2=new THREE.Quaternion();
+const _av2=new THREE.Vector3();
+async function initPose(fileset){ const o={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate:'GPU' }, runningMode:'VIDEO', numPoses:1 }; try{ poseLandmarker=await PoseLandmarker.createFromOptions(fileset,o); }catch(e){ o.baseOptions.delegate='CPU'; poseLandmarker=await PoseLandmarker.createFromOptions(fileset,o); } }
+async function initHands(fileset){ const o={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate:'GPU' }, runningMode:'VIDEO', numHands:2 }; try{ handLandmarker=await HandLandmarker.createFromOptions(fileset,o); }catch(e){ o.baseOptions.delegate='CPU'; handLandmarker=await HandLandmarker.createFromOptions(fileset,o); } }
+function captureRig(rootObj){
+  const byName={}; rootObj.traverse(o=>{ if(o.isBone) byName[o.name]=o; });
+  ARM.leftUpperArm=byName['LeftArm']; ARM.leftLowerArm=byName['LeftForeArm']; ARM.leftHand=byName['LeftHand'];
+  ARM.rightUpperArm=byName['RightArm']; ARM.rightLowerArm=byName['RightForeArm']; ARM.rightHand=byName['RightHand'];
+  const dc=(child,fb)=>{ if(!child) return fb.clone(); const d=child.position.clone(); return d.lengthSq()<1e-10?fb.clone():d.normalize(); };
+  const FX=new THREE.Vector3(1,0,0), NX=new THREE.Vector3(-1,0,0);
+  boneAxis={ leftUpperArm:dc(ARM.leftLowerArm,FX), rightUpperArm:dc(ARM.rightLowerArm,NX), leftLowerArm:dc(ARM.leftHand,FX), rightLowerArm:dc(ARM.rightHand,NX) };
+  armDefaults={}; armEMA={}; for(const k of ['leftUpperArm','leftLowerArm','rightUpperArm','rightLowerArm']){ const b=ARM[k]; if(b) armDefaults[k]=b.quaternion.clone(); }
+  fingerBones={}; fingerDefaults={}; fingerQ={}; thumbFlexAxis={};
+  for(const side of ['Left','Right']) for(const sp of FSPEC) for(const j of sp[1]){ const b=byName[side+'Hand'+sp[0]+j]; if(b){ fingerBones[side+sp[0]+j]=b; fingerDefaults[side+sp[0]+j]={x:b.rotation.x,y:b.rotation.y,z:b.rotation.z}; fingerQ[side+sp[0]+j]=b.quaternion.clone(); } }
+  for(const side of ['Left','Right']){ const w=byName[side+'Hand'], iM=byName[side+'HandIndex1'], pM=byName[side+'HandPinky1']; let pnW=null;
+    if(w&&iM&&pM){ const wp=w.getWorldPosition(new THREE.Vector3()), ip=iM.getWorldPosition(new THREE.Vector3()), pp=pM.getWorldPosition(new THREE.Vector3()); pnW=new THREE.Vector3().crossVectors(ip.clone().sub(wp), pp.clone().sub(wp)); if(pnW.lengthSq()>1e-10) pnW.normalize(); else pnW=null; }
+    for(const j of [1,2,3]){ const b=byName[side+'HandThumb'+j], c=byName[side+'HandThumb'+(j+1)]; if(!b||!c) continue; const ll=c.position.clone(); if(ll.lengthSq()<1e-10) continue; ll.normalize(); let ax=new THREE.Vector3(0,0,1); if(pnW){ b.updateWorldMatrix(true,false); const inv=b.getWorldQuaternion(new THREE.Quaternion()).invert(); const pnL=pnW.clone().applyQuaternion(inv).normalize(); const cr=new THREE.Vector3().crossVectors(ll,pnL); if(cr.lengthSq()>1e-8) ax=cr.normalize(); } thumbFlexAxis[side+'Thumb'+j]=ax; } }
 }
-function captureArmRest(root){
-  armBones={}; restLocalQ={}; restWorldQ={}; restChildDirW={};
-  const byName={}; root.traverse(o=>{ if(o.isBone) byName[o.name]=o; });
-  for(const n of P_ARMS){ const b=byName[n], c=byName[P_CHILD[n]]; if(!b||!c) continue;
-    armBones[n]=b; restLocalQ[n]=b.quaternion.clone(); restWorldQ[n]=b.getWorldQuaternion(new THREE.Quaternion());
-    const bp=b.getWorldPosition(new THREE.Vector3()), cp=c.getWorldPosition(new THREE.Vector3());
-    restChildDirW[n]=cp.sub(bp).normalize(); }
-}
-function aimArm(name, bone, targetDirW){
-  const q=_pq1.setFromUnitVectors(_pv1.copy(restChildDirW[name]), _pv2.copy(targetDirW).normalize());
-  const newWorld=_pq2.copy(q).multiply(restWorldQ[name]);
-  const parent=bone.parent; parent.updateWorldMatrix(true,false);
-  const pInv=_pq3.copy(parent.getWorldQuaternion(_pq4)).invert();
-  const local=_pq5.copy(pInv).multiply(newWorld);
-  const tgt=new THREE.Quaternion().copy(restLocalQ[name]).slerp(local, ARM_GAIN);
-  bone.quaternion.slerp(tgt, ARM_SMOOTH);
-}
-function applyPose(res){
-  const W=res.worldLandmarks && res.worldLandmarks[0]; if(!W) return;
-  const V=(i)=> new THREE.Vector3(-W[i].x, -W[i].y, -W[i].z);
-  const map={ Left:[12,14,16], Right:[11,13,15] };
-  for(const side of ['Left','Right']){
-    const a=map[side]; const A=armBones[side+'Arm'], F=armBones[side+'ForeArm']; if(!A) continue;
-    const sh=V(a[0]), el=V(a[1]), wr=V(a[2]);
-    aimArm(side+'Arm', A, el.clone().sub(sh)); A.updateWorldMatrix(true,true);
-    if(F){ aimArm(side+'ForeArm', F, wr.clone().sub(el)); F.updateWorldMatrix(true,false); }
+const _KNEE=0.25,_CAP=0.40;
+function shapeWorldDir(v){ if(v.z<0){ v.z=0; return v; } let z=v.z; if(z>_KNEE){ const over=z-_KNEE,range=_CAP-_KNEE; z=_KNEE+range*(1-1/(1+over/range)); } v.z=z; return v; }
+function poseDirToWorld(from,to,out){ out.set(to.x-from.x, -(to.y-from.y), -(to.z-from.z)); return out; }
+function aimBone(bone,defDir,worldDir,smooth){ if(!bone||!bone.parent) return; const len=worldDir.length(); if(len<1e-5) return; bone.parent.updateWorldMatrix(true,false); bone.parent.getWorldQuaternion(_q1); _q1.invert(); _av2.copy(worldDir).divideScalar(len).applyQuaternion(_q1); _q2.setFromUnitVectors(defDir,_av2); bone.quaternion.slerp(_q2,smooth); }
+function emaP(key,p,a){ let s=armEMA[key]; if(!s){ armEMA[key]={x:p.x,y:p.y,z:p.z}; return armEMA[key]; } s.x+=(p.x-s.x)*a; s.y+=(p.y-s.y)*a; s.z+=(p.z-s.z)*a; return s; }
+function applyArms(res){
+  const L=res.landmarks&&res.landmarks[0]; if(!L) return;
+  const map={left:[11,13,15],right:[12,14,16]};
+  for(const side of ['left','right']){
+    const sI=map[side][0],eI=map[side][1],wI=map[side][2]; const up=ARM[side+'UpperArm'], lo=ARM[side+'LowerArm']; if(!up||!lo) continue;
+    if((L[sI].visibility==null?1:L[sI].visibility)<0.3){ if(armDefaults[side+'UpperArm']) up.quaternion.slerp(armDefaults[side+'UpperArm'],0.1); if(armDefaults[side+'LowerArm']) lo.quaternion.slerp(armDefaults[side+'LowerArm'],0.1); continue; }
+    const sh=emaP(side+'s',L[sI],ARM_EMA), el=emaP(side+'e',L[eI],ARM_EMA), wr=emaP(side+'w',L[wI],ARM_EMA);
+    aimBone(up, boneAxis[side+'UpperArm'], shapeWorldDir(poseDirToWorld(sh,el,new THREE.Vector3())), ARM_SLERP); up.updateWorldMatrix(true,true);
+    aimBone(lo, boneAxis[side+'LowerArm'], shapeWorldDir(poseDirToWorld(el,wr,new THREE.Vector3())), ARM_SLERP); lo.updateWorldMatrix(true,false);
   }
+}
+function computeFingerState(pts){ if(!pts||pts.length<21) return null; const d=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y); const curl=(m,pp,dp,t)=>{ const ext=d(pts[m],pts[pp])+d(pts[pp],pts[dp])+d(pts[dp],pts[t]); return Math.max(0,Math.min(1,(1-d(pts[m],pts[t])/Math.max(ext*0.8,0.001))*3.0)); }; return { index:curl(5,6,7,8), middle:curl(9,10,11,12), ring:curl(13,14,15,16), little:curl(17,18,19,20) }; }
+function applyFingerCurl(Side,state){
+  const defAxis=FINGER_AXIS==='x'?'x':'z';
+  for(const sp of FSPEC){ const f=sp[0],joints=sp[1],weights=sp[2],key=sp[3];
+    if(f==='Thumb'){ if(THUMB_HOLD){ for(const j of joints){ const b=fingerBones[Side+f+j], rq=fingerQ[Side+f+j]; if(b&&rq) b.quaternion.slerp(rq,0.3); } } continue; }
+    const axisKey=defAxis, others=axisKey==='x'?['y','z']:['x','y']; const cv=state?state[key]:0;
+    for(let ji=0;ji<joints.length;ji++){ const j=joints[ji]; const b=fingerBones[Side+f+j], def=fingerDefaults[Side+f+j]; if(!b||!def) continue;
+      const tgt=def[axisKey]+FINGER_SIGN*(cv||0)*weights[ji]*FINGER_GAIN; b.rotation[axisKey]+=(tgt-b.rotation[axisKey])*0.3;
+      for(const k of others) b.rotation[k]+=(def[k]-b.rotation[k])*0.3; }
+  }
+}
+function applyHands(res){
+  const L=res.landmarks; if(!L||!L.length) return; const hd=res.handednesses||res.handedness;
+  for(let k=0;k<L.length;k++){ const lbl=(hd&&hd[k]&&hd[k][0])?hd[k][0].categoryName:'Right'; const side=(lbl==='Left')?'Left':'Right'; applyFingerCurl(side, computeFingerState(L[k])); }
 }
 function avatarLoop(){
   if(!avatarRunning) return; requestAnimationFrame(avatarLoop);
   const v=$("camVideo");
   if(v && v.readyState>=2 && v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; const _ts=performance.now();
     if(faceLandmarker){ try{ applyResults(faceLandmarker.detectForVideo(v, _ts)); }catch(e){} }
-    if(poseLandmarker){ try{ applyPose(poseLandmarker.detectForVideo(v, _ts+0.5)); }catch(e){} }
+    if(poseLandmarker){ try{ applyArms(poseLandmarker.detectForVideo(v, _ts+0.3)); }catch(e){} }
+    if(handLandmarker){ try{ applyHands(handLandmarker.detectForVideo(v, _ts+0.6)); }catch(e){} }
   }
   if(APPLY_HEAD_POSE && headBone){ _wd.copy(targetHeadWorld).multiply(headWorldRest); _ld.copy(headParentWorldInv).multiply(_wd); headBone.quaternion.slerp(_ld, 0.35); }
   renderer.render(scene, camera);
