@@ -57,7 +57,7 @@
 </head>
 <body>
 <header>
-  <h1>練習</h1>
+  <h1>ピア練習</h1>
   <span class="room" id="roomLabel">ルーム—</span>
   <span class="role hidden" id="roleLabel"></span>
   <a class="menubtn" href="/index.html">← メニューへ戻る</a>
@@ -348,14 +348,44 @@ function applyHands(res){
     applyFingerCurl('Left',  computeFingerState(arr[1].pp)); } // 画像右(高x)=本人左→アバター左
   else { const hd=res.handednesses||res.handedness; const lbl=(hd&&hd[0]&&hd[0][0])?hd[0][0].categoryName:'Right'; applyFingerCurl(lbl==='Left'?'Left':'Right', computeFingerState(L[0])); }
 }
+// ===== 認識ソース: 全画面/拡大/非表示でも止まらないよう MediaStreamTrackProcessor でトラックから直接取得 =====
+let procCanvas=null, procCtx=null, procReader=null, procHasFrame=false, useProc=false, procTrackRef=null;
+function stopFrameSource(){ useProc=false; if(procReader){ try{ procReader.cancel(); }catch(e){} procReader=null; } if(procTrackRef){ try{ procTrackRef.stop(); }catch(e){} procTrackRef=null; } procHasFrame=false; }
+async function pumpFrames(){
+  while(useProc && procReader){
+    let r; try{ r=await procReader.read(); }catch(e){ break; }
+    if(r.done) break; const frame=r.value;
+    try{ if(procCanvas.width!==frame.displayWidth||procCanvas.height!==frame.displayHeight){ procCanvas.width=frame.displayWidth; procCanvas.height=frame.displayHeight; } procCtx.drawImage(frame,0,0); procHasFrame=true; }catch(e){}
+    try{ frame.close(); }catch(e){}
+  }
+}
+async function startFrameSource(track){
+  stopFrameSource();
+  if(window.MediaStreamTrackProcessor){
+    try{
+      procTrackRef=track;
+      const proc=new MediaStreamTrackProcessor({ track });
+      procReader=proc.readable.getReader();
+      if(!procCanvas){ procCanvas=document.createElement('canvas'); procCtx=procCanvas.getContext('2d'); }
+      useProc=true; procHasFrame=false; pumpFrames();
+      return true;
+    }catch(e){ useProc=false; procReader=null; procTrackRef=null; }
+  }
+  // フォールバック(Chrome以外): 隠しvideo。表示は保持して拡大時のデコード停止を回避。
+  procTrackRef=track;
+  $("camVideo").srcObject=new MediaStream([track]); try{ await $("camVideo").play(); }catch(e){}
+  return false;
+}
 function avatarLoop(){
   if(!avatarRunning) return; requestAnimationFrame(avatarLoop);
   const nowMs=performance.now(); const dt=Math.min((nowMs-lastRigT)/1000, 0.1); lastRigT=nowMs;
-  const v=$("camVideo");
-  if(v && v.readyState>=2 && v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; const _ts=nowMs;
-    if(faceLandmarker){ try{ applyResults(faceLandmarker.detectForVideo(v, _ts)); }catch(e){} }
-    if(poseLandmarker){ try{ applyArms(poseLandmarker.detectForVideo(v, _ts+0.3), nowMs/1000); }catch(e){} }
-    if(handLandmarker){ try{ applyHands(handLandmarker.detectForVideo(v, _ts+0.6)); }catch(e){} }
+  let ds=null, dsReady=false;
+  if(useProc){ if(procHasFrame){ ds=procCanvas; dsReady=true; } }
+  else { const v=$("camVideo"); if(v && v.readyState>=2 && v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; ds=v; dsReady=true; } }
+  if(dsReady){
+    if(faceLandmarker){ try{ applyResults(faceLandmarker.detectForVideo(ds, nowMs)); }catch(e){} }
+    if(poseLandmarker){ try{ applyArms(poseLandmarker.detectForVideo(ds, nowMs+0.3), nowMs/1000); }catch(e){} }
+    if(handLandmarker){ try{ applyHands(handLandmarker.detectForVideo(ds, nowMs+0.6)); }catch(e){} }
   }
   updateArmsSmooth(dt);
   if(APPLY_HEAD_POSE && headBone){ _wd.copy(targetHeadWorld).multiply(headWorldRest); _ld.copy(headParentWorldInv).multiply(_wd); headBone.quaternion.slerp(_ld, 0.35); }
@@ -397,10 +427,10 @@ async function switchCamera(){
   const oldAudio = camStream ? camStream.getAudioTracks() : [];
   if(camStream){ camStream.getVideoTracks().forEach(t=>t.stop()); }
   if(ROLE==="patient"){
-    // 公開トラックはアバターのまま。MediaPipe入力と自分の映像だけ差替。
+    // 公開トラックはアバターのまま。認識入力と自分の映像だけ差替。
     camStream=new MediaStream([newTrack, ...oldAudio]);
-    $("camVideo").srcObject=new MediaStream([newTrack]); try{ await $("camVideo").play(); }catch(e){}
     $("localVideo").srcObject=new MediaStream([newTrack]);
+    await startFrameSource(newTrack.clone());
   } else {
     // 看護師: 公開中の映像トラックを差替
     try{
@@ -470,8 +500,9 @@ async function startRole(role){
     listCameras();
 
     if(role==="patient"){
-      $("camVideo").srcObject=new MediaStream(camStream.getVideoTracks()); await $("camVideo").play();
-      $("localVideo").srcObject=new MediaStream(camStream.getVideoTracks()); // 自分の映像(生カメラ)
+      const camTrack=camStream.getVideoTracks()[0];
+      $("localVideo").srcObject=new MediaStream([camTrack]); // 自分の映像(生カメラ・表示用)
+      await startFrameSource(camTrack.clone());              // 認識用(全画面/拡大でも止まらない)
       setStatus2("リアルアバターと表情認識を準備中...(初回は少し時間がかかります)");
       const avUrl = avatarUrlFor($("personaSelect").value);
       initThree(); await loadAvatar(avUrl); await initFace(); avatarRunning=true; avatarLoop();
@@ -517,6 +548,7 @@ async function teardown(){
   try{ if(lkRoom) await lkRoom.disconnect(); }catch(e){}
   lkRoom=null;
   avatarRunning=false;
+  stopFrameSource();
   try{ voice.stop(); }catch(e){}
   localTracks.forEach(t=>t.stop()); localTracks=[];
   if(canvasStream){ canvasStream.getTracks().forEach(t=>t.stop()); canvasStream=null; }
