@@ -176,6 +176,9 @@ const GAIN = {};
 let renderer, scene, camera, morphMeshes = [], headNode = null, headBone = null, faceLandmarker = null, avatarRunning = false, lastVideoTime = -1;
 const APPLY_HEAD_POSE = true;   // 首の向き・傾きをHeadボーンに反映
 const HEAD_POSE_GAIN = 1.0;     // 首振りの強さ(1.0=等倍)
+// 顔の左右向き(yaw)の符号。'y'キーでその場反転、URL ?yaw=1 / ?yaw=-1 でも指定可。
+let HEAD_YAW_SIGN = (new URLSearchParams(location.search).get('yaw')==='1') ? 1 : -1;
+window.addEventListener('keydown',(e)=>{ if(e.key==='y'||e.key==='Y'){ HEAD_YAW_SIGN*=-1; try{ setStatus('顔の向き: '+(HEAD_YAW_SIGN>0?'そのまま(+1)':'反転(-1)')+'  ※yキーで切替'); }catch(_){} } });
 const targetHeadWorld = new THREE.Quaternion();
 const headWorldRest = new THREE.Quaternion();
 const headParentWorldInv = new THREE.Quaternion();
@@ -253,7 +256,7 @@ function applyResults(res){
   if(res.facialTransformationMatrixes && res.facialTransformationMatrixes.length){
     const m=new THREE.Matrix4().fromArray(res.facialTransformationMatrixes[0].data);
     const p=new THREE.Vector3(), s=new THREE.Vector3(), q=new THREE.Quaternion(); m.decompose(p,q,s);
-    const eu=new THREE.Euler().setFromQuaternion(q,'YXZ'); targetHeadWorld.setFromEuler(eu); // yawは反転しない(顔の向きを実物と一致)
+    const eu=new THREE.Euler().setFromQuaternion(q,'YXZ'); eu.y*=HEAD_YAW_SIGN; targetHeadWorld.setFromEuler(eu);
   }
 }
 // ===== 手・腕・指トラッキング(MediaPipe) : dance_mocap方式(One Euro + 時間ベースslerp)を移植 =====
@@ -388,6 +391,8 @@ function processFrame(ds){
   updateArmsSmooth(dt);
   if(APPLY_HEAD_POSE && headBone){ _wd.copy(targetHeadWorld).multiply(headWorldRest); _ld.copy(headParentWorldInv).multiply(_wd); headBone.quaternion.slerp(_ld, 0.35); }
   renderer.render(scene, camera);
+  // 送信用に1フレーム明示要求(captureStream(0))。合成に依存せず全画面/非表示でも送れる
+  if(canvasStream){ const _vt=canvasStream.getVideoTracks()[0]; if(_vt&&_vt.requestFrame) _vt.requestFrame(); }
 }
 // procパスは pumpFrames がフレーム駆動するのでrAFは描画しない。フォールバック(video)時のみrAFで駆動。
 function avatarLoop(){
@@ -514,7 +519,9 @@ async function startRole(role){
       initThree(); await loadAvatar(avUrl); await initFace(); avatarRunning=true; avatarLoop();
       const micStream=new MediaStream(camStream.getAudioTracks());
       audioTrack=await voice.start(micStream); applyVoice();
-      canvasStream=$("avatarCanvas").captureStream(30); videoTrack=canvasStream.getVideoTracks()[0];
+      canvasStream=$("avatarCanvas").captureStream(0); // 0=手動。processFrameでrequestFrame(全画面/非表示でも送信継続)
+      { const _vt0=canvasStream.getVideoTracks()[0]; if(!(_vt0&&_vt0.requestFrame)) canvasStream=$("avatarCanvas").captureStream(30); } // requestFrame非対応は自動30fps
+      videoTrack=canvasStream.getVideoTracks()[0];
     } else {
       const vids = camStream ? camStream.getVideoTracks() : [];
       const auds = camStream ? camStream.getAudioTracks() : [];
