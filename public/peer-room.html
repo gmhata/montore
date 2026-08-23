@@ -111,7 +111,7 @@
         <div class="sbbox avatar"><canvas id="avatarCanvas" width="640" height="360"></canvas></div>
       </div>
 
-      <div class="sblabel">自分の映像</div>
+      <div class="sblabel" id="selfLabel">自分の映像</div>
       <div class="sbbox"><video id="localVideo" autoplay playsinline muted></video></div>
 
       <div id="statusSb">接続中...</div>
@@ -269,6 +269,7 @@ class OneEuro{ constructor(minCutoff=1.2,beta=0.5,dCutoff=1.0){ this.mc=minCutof
 const ARM_K=14;                        // 腕の追従速度[1/s] (時間ベースslerp: t=1-exp(-k*dt) でフレームレート非依存)
 let euroF={}, armParentWorld={}, armFore={}, armUpDir={}, armVis={};
 let lastRigT=performance.now();
+let lastDetMs=0;   // 認識の実行間隔を約22fpsに間引き(3モデル同時の過負荷でハンド検出が落ちるのを防ぐ)
 function ef(key,val,t){ let f=euroF[key]; if(!f){ f=new OneEuro(); euroF[key]=f; } return f.filter(val,t); }
 function fpt(prefix,p,t){ return { x:ef(prefix+'x',p.x,t), y:ef(prefix+'y',p.y,t), z:ef(prefix+'z',p.z,t) }; }
 const FINGER_AXIS='x', FINGER_SIGN=1, FINGER_GAIN=1.1, THUMB_HOLD=true; // 確定: 指軸X・向き+・親指固定
@@ -350,12 +351,15 @@ function applyFingerCurl(Side,state){
       for(const k of others) b.rotation[k]+=(def[k]-b.rotation[k])*0.3; }
   }
 }
+// 手が検出されない側の指は、直前の(握った)形で固まらないよう自然な開き(レスト)へ戻す
+function relaxFingersSide(Side){ for(const sp of FSPEC){ const f=sp[0]; for(const j of sp[1]){ const b=fingerBones[Side+f+j], def=fingerDefaults[Side+f+j]; if(b&&def){ b.rotation.x+=(def.x-b.rotation.x)*0.25; b.rotation.y+=(def.y-b.rotation.y)*0.25; b.rotation.z+=(def.z-b.rotation.z)*0.25; } } } }
 function applyHands(res){
-  const L=res.landmarks; if(!L||!L.length) return;
+  const L=res.landmarks;
+  if(!L||!L.length){ relaxFingersSide('Left'); relaxFingersSide('Right'); return; } // 両手未検出→両手レストへ
   if(L.length>=2){ const arr=L.map(pp=>({pp,x:pp[0].x})).sort((a,b)=>a.x-b.x);
     applyFingerCurl('Right', computeFingerState(arr[0].pp));   // 画像左(低x)=本人右→アバター右
     applyFingerCurl('Left',  computeFingerState(arr[1].pp)); } // 画像右(高x)=本人左→アバター左
-  else { const hd=res.handednesses||res.handedness; const lbl=(hd&&hd[0]&&hd[0][0])?hd[0][0].categoryName:'Right'; applyFingerCurl(lbl==='Left'?'Left':'Right', computeFingerState(L[0])); }
+  else { const hd=res.handednesses||res.handedness; const lbl=(hd&&hd[0]&&hd[0][0])?hd[0][0].categoryName:'Right'; const side=(lbl==='Left'?'Left':'Right'); applyFingerCurl(side, computeFingerState(L[0])); relaxFingersSide(side==='Left'?'Right':'Left'); } // 片手のみ→反対の手はレストへ
 }
 // ===== 認識ソース: 全画面/拡大/非表示でも止まらないよう MediaStreamTrackProcessor でトラックから直接取得 =====
 let procCanvas=null, procCtx=null, procReader=null, procHasFrame=false, useProc=false, procTrackRef=null;
@@ -389,7 +393,7 @@ async function startFrameSource(track){
 // 1フレーム分の処理(認識→腕/首の追従→描画)。rAFにもフレーム駆動(pumpFrames)にも使う。
 function processFrame(ds){
   const nowMs=performance.now(); const dt=Math.min((nowMs-lastRigT)/1000, 0.1); lastRigT=nowMs;
-  if(ds){
+  if(ds && (nowMs-lastDetMs)>=45){ lastDetMs=nowMs;   // 認識は約22fpsに間引き(過負荷でハンド検出が落ちるのを防止)
     if(faceLandmarker){ try{ applyResults(faceLandmarker.detectForVideo(ds, nowMs)); }catch(e){} }
     if(poseLandmarker){ try{ applyArms(poseLandmarker.detectForVideo(ds, nowMs+0.3), nowMs/1000); }catch(e){} }
     if(handLandmarker){ try{ applyHands(handLandmarker.detectForVideo(ds, nowMs+0.6)); }catch(e){} }
@@ -517,6 +521,7 @@ function showCall(role){
   $("roleLabel").textContent = role==="nurse" ? "看護師役" : "患者役";
   $("patientSettings").classList.toggle("hidden", role!=="patient");
   $("avatarBox").classList.toggle("hidden", role!=="patient");
+  $("selfLabel").textContent = role==="nurse" ? "自分の映像（送信している映像）" : "自分の映像"; // 看護師は自分の映像がそのまま送信映像
   const ph=$("stagePlaceholder"); if(ph) ph.classList.remove("hidden");
 }
 
