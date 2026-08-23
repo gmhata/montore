@@ -192,7 +192,8 @@ function frameUpper(rootObj){
   rootObj.traverse(o=>{ if(o.isBone){ if(/^Head$/i.test(o.name)) head=o; if(/^Hips$/i.test(o.name)) hips=o; } });
   const hp = head?head.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,1.5,0);
   const hipP = hips?hips.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,0.9,0);
-  const center=hp.clone().lerp(hipP,0.12); const torso=Math.max(0.3, hp.y-hipP.y);
+  const torso=Math.max(0.3, hp.y-hipP.y);
+  const center=hp.clone(); center.y += torso*0.10; // 狙いを頭より上に=頭を下げ余白
   const half=torso*0.30*UP_ZOOM; const dist=half/Math.tan((camera.fov*Math.PI/180)/2);
   camera.position.set(center.x, center.y, center.z+dist);
   camera.near=Math.max(dist/100,0.01); camera.far=dist*100; camera.updateProjectionMatrix();
