@@ -3668,6 +3668,38 @@ app.post("/api/peer/token", requireAuth, (req, res) => {
   }
 });
 
+/* ============ ピア練習: P2Pシグナリング中継(Firestore経由) ============ */
+// P2P(WebRTC直結)を優先し、失敗時はクライアントがLiveKitへ自動フォールバックする。
+// ここではSDP(非トリクル=ICE候補込み)とtransport決定フラグを1ドキュメントで受け渡すだけ。
+app.post("/api/peer/signal", requireAuth, async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ error: "db not ready" });
+    const room = String(req.body?.room || "").trim();
+    const field = String(req.body?.field || "").trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(room)) return res.status(400).json({ error: "bad room" });
+    if (!["offer", "answer", "transport", "reset"].includes(field)) return res.status(400).json({ error: "bad field" });
+    const ref = db.collection("peerSignaling").doc("peer-" + room);
+    if (field === "reset") { await ref.set({ ts: Date.now() }); return res.json({ ok: true }); }
+    await ref.set({ [field]: req.body?.value, [field + "_ts"]: Date.now(), ts: Date.now() }, { merge: true });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[/api/peer/signal POST]", e);
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+app.get("/api/peer/signal", requireAuth, async (req, res) => {
+  try {
+    if (!dbReady) return res.status(503).json({ error: "db not ready" });
+    const room = String(req.query?.room || "").trim();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(room)) return res.status(400).json({ error: "bad room" });
+    const doc = await db.collection("peerSignaling").doc("peer-" + room).get();
+    res.json(doc.exists ? doc.data() : {});
+  } catch (e) {
+    console.error("[/api/peer/signal GET]", e);
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
 /* ============ ピア練習: 在室(プレゼンス) ============ */
 const PEER_PRESENCE_TTL_MS = 15000; // これより古い在室は「退室済み」とみなす
 function peerDisplayName(u) {

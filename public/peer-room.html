@@ -165,6 +165,7 @@ const auth = getAuth(app);
 
 let ROLE = null, joined = false;
 let lkRoom = null, localTracks = [], camStream = null, canvasStream = null;
+let pc = null, p2pActive = false, transportMode = null;   // P2P(RTCPeerConnection)。失敗時LiveKitへ自動切替
 
 // ===== アバター(患者役) =====
 function canon(s){ return String(s).toLowerCase().replace(/left$/,'l').replace(/right$/,'r').replace(/[^a-z0-9]/g,''); }
@@ -336,7 +337,7 @@ let lastRigT=performance.now();
 let lastDetMs=0;   // 認識の実行間隔を約22fpsに間引き(3モデル同時の過負荷でハンド検出が落ちるのを防ぐ)
 let dbgFace=0, dbgPose=0, dbgHands=0;               // 検出状況(?debug=1 のときコンソール出力)
 let lastLogMs=0;
-const BUILD="2026-08-23-m";                          // ビルド識別子(コンソールで反映確認)
+const BUILD="2026-08-23-n";                          // ビルド識別子(コンソールで反映確認)
 const DEBUG = new URLSearchParams(location.search).get('debug')==='1';
 try{ console.log("PeerMontore build:", BUILD, DEBUG?"(debug)":""); }catch(_){}
 function ef(key,val,t){ let f=euroF[key]; if(!f){ f=new OneEuro(); euroF[key]=f; } return f.filter(val,t); }
@@ -525,10 +526,14 @@ async function switchCamera(){
     $("localVideo").srcObject=new MediaStream([newTrack]);
     await startFrameSource(newTrack.clone());
   } else {
-    // 看護師: 公開中の映像トラックを差替
+    // 看護師: 公開中の映像トラックを差替(P2P/LiveKit両対応)
     try{
-      const pubs=lkRoom&&lkRoom.localParticipant&&lkRoom.localParticipant.videoTrackPublications ? Array.from(lkRoom.localParticipant.videoTrackPublications.values()) : [];
-      const vpub=pubs.find(p=>p.track); if(vpub&&vpub.track&&vpub.track.replaceTrack){ await vpub.track.replaceTrack(newTrack); }
+      if(p2pActive && pc){
+        const s=pc.getSenders().find(x=>x.track&&x.track.kind==='video'); if(s) await s.replaceTrack(newTrack);
+      } else {
+        const pubs=lkRoom&&lkRoom.localParticipant&&lkRoom.localParticipant.videoTrackPublications ? Array.from(lkRoom.localParticipant.videoTrackPublications.values()) : [];
+        const vpub=pubs.find(p=>p.track); if(vpub&&vpub.track&&vpub.track.replaceTrack){ await vpub.track.replaceTrack(newTrack); }
+      }
     }catch(e){ setStatus("カメラ切替に失敗: "+(e&&e.message?e.message:e)); }
     camStream=new MediaStream([newTrack, ...oldAudio]);
     $("localVideo").srcObject=new MediaStream([newTrack]);
@@ -545,6 +550,60 @@ async function fetchToken(room, role){
 function attachRemoteTrack(track){
   if(track.kind==="video"){ track.attach($("remoteVideo")); const ph=$("stagePlaceholder"); if(ph) ph.classList.add("hidden"); }
   else if(track.kind==="audio"){ const el=track.attach(); el.id="remoteAudio"; document.body.appendChild(el); }
+}
+
+// ===== 通話トランスポート: P2P優先 → 失敗時 LiveKit へ自動フォールバック(学生操作なし) =====
+const P2P_ICE=[{urls:"stun:stun.l.google.com:19302"},{urls:"stun:stun1.l.google.com:19302"}];
+const P2P_TIMEOUT_MS=12000;
+async function sigPost(field,value){ const t=await getIdToken(auth.currentUser); await fetch("/api/peer/signal",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+t},body:JSON.stringify({room:roomRaw,field,value})}); }
+async function sigGet(){ try{ const t=await getIdToken(auth.currentUser); const r=await fetch("/api/peer/signal?room="+encodeURIComponent(roomRaw),{headers:{"Authorization":"Bearer "+t}}); return r.ok?(await r.json()):{}; }catch(e){ return {}; } }
+function waitGather(p){ return new Promise(res=>{ if(p.iceGatheringState==='complete')return res(); const to=setTimeout(res,3000); p.addEventListener('icegatheringstatechange',function h(){ if(p.iceGatheringState==='complete'){clearTimeout(to);p.removeEventListener('icegatheringstatechange',h);res();} }); }); }
+function attachRemoteP2P(stream){ const v=$("remoteVideo"); v.srcObject=stream; v.muted=false; try{ v.play&&v.play(); }catch(_){} const ph=$("stagePlaceholder"); if(ph) ph.classList.add("hidden"); }
+async function pollSignal(field, timeoutMs){ const start=Date.now(); while(Date.now()-start<timeoutMs){ const d=await sigGet(); if(ROLE!=='nurse' && d && d.transport==='livekit') return null; if(d && d[field]) return d[field]; await new Promise(r=>setTimeout(r,700)); } return null; }
+
+async function connectP2P(role, tracks){
+  if(role==='nurse'){ try{ await sigPost("reset"); }catch(e){} }
+  pc=new RTCPeerConnection({iceServers:P2P_ICE});
+  const remote=new MediaStream();
+  pc.ontrack=e=>{ remote.addTrack(e.track); attachRemoteP2P(remote); };
+  const out=new MediaStream(tracks); tracks.forEach(t=>pc.addTrack(t,out));
+  const connected=new Promise(res=>{ let done=false; const fin=v=>{ if(!done){done=true;res(v);} };
+    pc.addEventListener('iceconnectionstatechange',()=>{ const s=pc.iceConnectionState; if(DEBUG)console.log("[P2P] ice:",s);
+      if(s==='connected'||s==='completed') fin(true); if(s==='failed') fin(false); });
+    setTimeout(()=>fin(false),P2P_TIMEOUT_MS); });
+  if(role==='nurse'){
+    const o=await pc.createOffer(); await pc.setLocalDescription(o); await waitGather(pc);
+    await sigPost("offer", JSON.stringify(pc.localDescription));
+    const ans=await pollSignal("answer", P2P_TIMEOUT_MS-1500);
+    if(!ans){ try{ await sigPost("transport","livekit"); }catch(e){} return failP2P(); }
+    try{ await pc.setRemoteDescription(JSON.parse(ans)); }catch(e){ return failP2P(); }
+  } else {
+    const off=await pollSignal("offer", P2P_TIMEOUT_MS-1500);
+    if(!off) return failP2P();
+    try{ await pc.setRemoteDescription(JSON.parse(off)); }catch(e){ return failP2P(); }
+    const a=await pc.createAnswer(); await pc.setLocalDescription(a); await waitGather(pc);
+    await sigPost("answer", JSON.stringify(pc.localDescription));
+  }
+  const ok=await connected;
+  if(role==='nurse'){ try{ await sigPost("transport", ok?"p2p":"livekit"); }catch(e){} }
+  if(!ok) return failP2P();
+  p2pActive=true; transportMode="p2p";
+  pc.oniceconnectionstatechange=()=>{ const s=pc.iceConnectionState; if(s==='failed'||s==='disconnected') setStatus("P2P接続が不安定です。"); };
+  setStatus("相手と接続しました（P2P直結）。");
+  return true;
+}
+function failP2P(){ try{ pc&&pc.close(); }catch(e){} pc=null; p2pActive=false; return false; }
+
+async function connectLiveKit(role, tracks){
+  const { url, token }=await fetchToken(roomRaw, role);
+  lkRoom=new LivekitClient.Room({ adaptiveStream:true, dynacast:true });
+  lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,(t)=>attachRemoteTrack(t));
+  lkRoom.on(LivekitClient.RoomEvent.ParticipantConnected,(p)=>{ setStatus("相手が入室しました: "+uname(p.name||p.identity)); });
+  lkRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected,()=>{ setStatus("相手が退室しました。"); const ph=$("stagePlaceholder"); if(ph) ph.classList.remove("hidden"); });
+  lkRoom.on(LivekitClient.RoomEvent.Disconnected,()=>setStatus("切断されました。"));
+  await lkRoom.connect(url, token);
+  for(const t of tracks){ await lkRoom.localParticipant.publishTrack(t, t.kind==="video"?{ videoCodec:"vp9", videoEncoding:{ maxBitrate:1_800_000, maxFramerate:30 } }:undefined); }
+  transportMode="livekit";
 }
 
 // ===== 在室ハートビート =====
@@ -645,24 +704,26 @@ async function startRole(role){
     }
     localTracks=[videoTrack, audioTrack].filter(Boolean);
 
-    setStatus2("通話サーバへ接続中...");
-    const { url, token }=await fetchToken(roomRaw, role);
-    lkRoom=new LivekitClient.Room({ adaptiveStream:true, dynacast:true });
-    lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,(t)=>attachRemoteTrack(t));
-    lkRoom.on(LivekitClient.RoomEvent.ParticipantConnected,(p)=>{ setStatus("相手が入室しました: "+uname(p.name||p.identity)); });
-    lkRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected,()=>{ setStatus("相手が退室しました。"); const ph=$("stagePlaceholder"); if(ph) ph.classList.remove("hidden"); });
-    lkRoom.on(LivekitClient.RoomEvent.Disconnected,()=>setStatus("切断されました。"));
-    await lkRoom.connect(url, token);
-    for(const t of localTracks){ await lkRoom.localParticipant.publishTrack(t, t.kind==="video"?{ videoCodec:"vp9", videoEncoding:{ maxBitrate:1_800_000, maxFramerate:30 } }:undefined); }
+    // ---- 接続: P2P優先 → ダメなら自動でLiveKit(サーバー中継)へ。学生の切替操作は不要 ----
+    setStatus2("通話を接続中…（まずP2Pで試します）");
+    let usedP2P=false;
+    try{ usedP2P=await connectP2P(role, localTracks); }catch(e){ console.warn("[P2P]失敗→フォールバック",e); usedP2P=false; }
+    if(!usedP2P){
+      setStatus2("P2Pが使えないため、通常方式（サーバー中継）に切替えています…");
+      await connectLiveKit(role, localTracks);
+    }
 
     joined=true;
     showCall(role);
     startHeartbeat();
-    const rp = lkRoom.remoteParticipants ? Array.from(lkRoom.remoteParticipants.values())[0] : null;
-    const others=lkRoom.remoteParticipants?lkRoom.remoteParticipants.size:0;
     const note = receiveOnly ? "(受信専用)" : "";
-    const who = rp ? (": "+uname(rp.name||rp.identity)) : "";
-    setStatus("入室しました"+note+"。"+(others?("相手は入室済みです"+who+"。"):"相手の入室を待っています..."));
+    if(usedP2P){ setStatus("入室しました"+note+"（P2P直結）。相手と接続済みです。"); }
+    else {
+      const rp = lkRoom.remoteParticipants ? Array.from(lkRoom.remoteParticipants.values())[0] : null;
+      const others=lkRoom.remoteParticipants?lkRoom.remoteParticipants.size:0;
+      const who = rp ? (": "+uname(rp.name||rp.identity)) : "";
+      setStatus("入室しました"+note+"（サーバー中継）。"+(others?("相手は入室済みです"+who+"。"):"相手の入室を待っています..."));
+    }
   }catch(e){
     console.error(e);
     const raw=(e&&e.message)?e.message:String(e);
@@ -679,6 +740,9 @@ async function teardown(){
   await stopHeartbeat();
   try{ if(lkRoom) await lkRoom.disconnect(); }catch(e){}
   lkRoom=null;
+  try{ if(pc) pc.close(); }catch(e){}
+  pc=null; p2pActive=false; transportMode=null;
+  try{ sigPost("reset"); }catch(e){}
   avatarRunning=false;
   stopFrameSource();
   try{ voice.stop(); }catch(e){}

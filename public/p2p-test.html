@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2P接続テスト（STUNのみ / TURN無し）— PeerMontore</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;background:#fdf2f8;color:#3b1e33;line-height:1.6;padding:16px;max-width:1000px;margin:0 auto}
+  h1{font-size:19px;color:#be185d;margin-bottom:4px}
+  .sub{font-size:13px;color:#9d5b7e;margin-bottom:14px}
+  .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 10px rgba(219,39,119,.10);margin-bottom:14px}
+  h2{font-size:15px;color:#9d174d;margin-bottom:8px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+  button{background:#ec4899;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:14px;font-weight:700;cursor:pointer}
+  button:hover{background:#db2777}
+  button:disabled{background:#f3d4e6;color:#fff;cursor:not-allowed}
+  button.sec{background:#fff;color:#be185d;border:2px solid #f5c6e0}
+  button.sec:hover{background:#fff0f6}
+  textarea{width:100%;height:90px;border:1px solid #f5c6e0;border-radius:8px;padding:8px;font-family:monospace;font-size:11px;resize:vertical}
+  input[type=text]{border:1px solid #f5c6e0;border-radius:8px;padding:7px 10px;font-size:13px;min-width:280px;font-family:monospace}
+  label{font-size:13px;color:#6b2b52}
+  .roles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .role{border:2px solid #f5c6e0;border-radius:10px;padding:14px}
+  .role h3{font-size:14px;color:#be185d;margin-bottom:8px}
+  .step{font-size:12px;color:#7c5a6e;margin:6px 0}
+  .videos{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .vwrap{text-align:center}
+  .vwrap div{font-size:12px;color:#6b2b52;margin-bottom:4px}
+  video{width:100%;max-width:320px;background:#111;border-radius:8px;aspect-ratio:4/3;object-fit:cover}
+  #verdict{font-size:16px;font-weight:800;padding:14px;border-radius:10px;text-align:center;margin-bottom:8px;background:#f3f4f6;color:#6b7280}
+  #verdict.ok{background:#dcfce7;color:#166534}
+  #verdict.ng{background:#fee2e2;color:#991b1b}
+  #verdict.wait{background:#fef9c3;color:#854d0e}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  td{padding:4px 8px;border-bottom:1px solid #f3e8f0;vertical-align:top}
+  td:first-child{color:#9d5b7e;white-space:nowrap;width:150px}
+  .mono{font-family:monospace}
+  .hint{font-size:12px;background:#fff0f7;border-radius:8px;padding:10px 12px;color:#6b2b52;margin-top:8px}
+  code{background:#fce7f3;padding:1px 5px;border-radius:4px;font-size:12px}
+  .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:999px;background:#f3f4f6;color:#374151;margin:2px}
+  .pill.srflx{background:#dbeafe;color:#1e40af}
+  .pill.host{background:#dcfce7;color:#166534}
+  .pill.relay{background:#fee2e2;color:#991b1b}
+</style>
+</head>
+<body>
+  <h1>P2P接続テスト（STUNのみ・TURN無し）</h1>
+  <div class="sub">2台のPCで直接WebRTC接続できるかを確認します。つながれば P2P 移行可能、つながらなければ学内では TURN が必要、という判定になります。サーバー不要・カメラ不要（テスト映像を自動生成）。</div>
+
+  <div id="verdict">まだ接続していません</div>
+
+  <div class="card">
+    <h2>STUNサーバー（既定のままでOK）</h2>
+    <div class="row">
+      <input type="text" id="stun" value="stun:stun.l.google.com:19302">
+      <label>※TURNは意図的に未設定。ここでつながれば「中継なしで直接つながる」ことを意味します。</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>使い方</h2>
+    <div class="step">1) 2台のPC（学内で試したい回線）でこのページを開く。</div>
+    <div class="step">2) 片方で「A：発信する」→ 生成された<b>コードA</b>をコピーし、メール/チャット等でもう片方へ渡す。</div>
+    <div class="step">3) もう片方で<b>コードA</b>を貼り付け「B：応答する」→ 生成された<b>コードB</b>をコピーして発信側へ返す。</div>
+    <div class="step">4) 発信側で<b>コードB</b>を貼り付け「接続する」。上部の判定と下部の映像・経路を確認。</div>
+  </div>
+
+  <div class="roles">
+    <div class="role">
+      <h3>A：発信する（先に押す方）</h3>
+      <div class="row"><button id="btnOffer">A：発信する</button></div>
+      <div class="step">あなたのコード（A→Bへ渡す）：</div>
+      <textarea id="offerOut" readonly placeholder="「A：発信する」を押すとここに出ます"></textarea>
+      <div class="row"><button class="sec" id="copyOffer">コードAをコピー</button></div>
+      <div class="step" style="margin-top:10px">相手の返信（コードB）を貼り付け：</div>
+      <textarea id="answerIn" placeholder="相手から届いたコードBを貼り付け"></textarea>
+      <div class="row"><button id="btnConnect">接続する</button></div>
+    </div>
+
+    <div class="role">
+      <h3>B：応答する（後から入る方）</h3>
+      <div class="step">相手のコードA を貼り付け：</div>
+      <textarea id="offerIn" placeholder="相手から届いたコードAを貼り付け"></textarea>
+      <div class="row"><button id="btnAnswer">B：応答する</button></div>
+      <div class="step">あなたのコード（B→Aへ返す）：</div>
+      <textarea id="answerOut" readonly placeholder="「B：応答する」を押すとここに出ます"></textarea>
+      <div class="row"><button class="sec" id="copyAnswer">コードBをコピー</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>映像（自分／相手）</h2>
+    <div class="videos">
+      <div class="vwrap"><div>自分（テスト映像）</div><video id="localV" autoplay muted playsinline></video></div>
+      <div class="vwrap"><div>相手</div><video id="remoteV" autoplay playsinline></video></div>
+    </div>
+    <div class="hint">相手側にこちらの動くテスト映像（時計＋動く点）が映れば、映像がP2Pで届いています。</div>
+  </div>
+
+  <div class="card">
+    <h2>診断</h2>
+    <table>
+      <tr><td>接続状態</td><td class="mono" id="dConn">-</td></tr>
+      <tr><td>ICE状態</td><td class="mono" id="dIce">-</td></tr>
+      <tr><td>取得できた自分の経路</td><td id="dCands">-</td></tr>
+      <tr><td>採用された経路（自分↔相手）</td><td id="dPair">-</td></tr>
+      <tr><td>データ往復(RTT)</td><td class="mono" id="dRtt">-</td></tr>
+      <tr><td>ログ</td><td class="mono" id="dLog" style="white-space:pre-wrap;font-size:11px"></td></tr>
+    </table>
+    <div class="row" style="margin-top:10px"><button class="sec" id="btnReset">リセット</button></div>
+    <div class="hint">
+      経路の意味：<span class="pill host">host</span>=同一LAN直結／<span class="pill srflx">srflx</span>=STUN経由でNAT越え成功（=直接つながっている）／<span class="pill relay">relay</span>=TURN中継（このテストでは出ません）。<br>
+      <b>srflx か host でつながれば TURN 不要でP2P化できます。</b>「ICE状態=failed」になったら、その回線では TURN が必要です。
+    </div>
+  </div>
+
+<script>
+const $=id=>document.getElementById(id);
+let pc=null, dc=null, localStream=null, statsTimer=null, pingTimer=null, connectedOnce=false;
+const candTypes=new Set();
+
+function log(m){ const el=$("dLog"); el.textContent=(el.textContent+"\n"+m).trim().split("\n").slice(-8).join("\n"); }
+function setVerdict(state,msg){ const v=$("verdict"); v.className=state; v.textContent=msg; }
+
+// ---- テスト映像（カメラ不要・HTTPS不要）----
+function makeCanvasStream(label){
+  const c=document.createElement('canvas'); c.width=320; c.height=240;
+  const ctx=c.getContext('2d'); let t=0;
+  function draw(){
+    t++;
+    ctx.fillStyle='#0b1020'; ctx.fillRect(0,0,320,240);
+    ctx.fillStyle='#ec4899'; ctx.font='bold 20px sans-serif'; ctx.fillText(label,12,32);
+    ctx.fillStyle='#e5e7eb'; ctx.font='16px monospace';
+    ctx.fillText(new Date().toLocaleTimeString(),12,60);
+    ctx.fillText('frame '+t,12,84);
+    const x=160+Math.cos(t/15)*110, y=150+Math.sin(t/15)*60;
+    ctx.beginPath(); ctx.arc(x,y,16,0,7); ctx.fillStyle='#38bdf8'; ctx.fill();
+    requestAnimationFrame(draw);
+  }
+  draw();
+  return c.captureStream(15);
+}
+
+function iceServers(){ const u=$("stun").value.trim(); return u?[{urls:u}]:[]; }
+
+function newPC(){
+  const p=new RTCPeerConnection({iceServers:iceServers()});
+  localStream=makeCanvasStream(location.hostname||'PC');
+  $("localV").srcObject=localStream;
+  localStream.getTracks().forEach(tr=>p.addTrack(tr,localStream));
+  p.ontrack=e=>{ $("remoteV").srcObject=e.streams[0]; log('相手トラック受信'); };
+  p.onicecandidate=e=>{ if(e.candidate){ const ty=e.candidate.type||parseType(e.candidate.candidate); if(ty){candTypes.add(ty); renderCands();} } };
+  p.oniceconnectionstatechange=()=>{ $("dIce").textContent=p.iceConnectionState; onIce(p.iceConnectionState); };
+  p.onconnectionstatechange=()=>{ $("dConn").textContent=p.connectionState; };
+  p.ondatachannel=e=>{ dc=e.channel; wireDC(); };
+  return p;
+}
+function parseType(s){ const m=/ typ (\w+)/.exec(s||''); return m?m[1]:null; }
+function renderCands(){ $("dCands").innerHTML=[...candTypes].map(t=>`<span class="pill ${t}">${t}</span>`).join('')||'-'; }
+
+function wireDC(){
+  dc.onopen=()=>{ log('データチャネル開通'); startPing(); };
+  dc.onmessage=ev=>{ if(ev.data.startsWith('ping:')){ dc.send('pong:'+ev.data.slice(5)); } else if(ev.data.startsWith('pong:')){ const t=Number(ev.data.slice(5)); $("dRtt").textContent=(performance.now()-t).toFixed(0)+' ms'; } };
+}
+function startPing(){ if(pingTimer)clearInterval(pingTimer); pingTimer=setInterval(()=>{ if(dc&&dc.readyState==='open') dc.send('ping:'+performance.now()); },1000); }
+
+function onIce(st){
+  if((st==='connected'||st==='completed') && !connectedOnce){
+    connectedOnce=true; setVerdict('ok','✅ 直接つながりました（TURN不要）。この回線ならP2P移行できます。');
+    startStats();
+  }
+  if(st==='failed'){ setVerdict('ng','❌ 直接つながりませんでした。この学内回線では TURN（中継）が必要な可能性が高いです。'); }
+  if(st==='checking'){ setVerdict('wait','⏳ 接続を試行中…（数秒お待ちください）'); }
+  if(st==='disconnected'){ setVerdict('wait','⚠ 一時的に切断。回復を待っています…'); }
+}
+
+async function startStats(){
+  if(statsTimer)clearInterval(statsTimer);
+  statsTimer=setInterval(async()=>{
+    if(!pc)return; const stats=await pc.getStats(); let pair=null,loc={},rem={};
+    stats.forEach(r=>{ if(r.type==='candidate-pair'&&(r.state==='succeeded'||r.nominated)&&r.bytesSent>0) pair=r;
+      if(r.type==='local-candidate')loc[r.id]=r; if(r.type==='remote-candidate')rem[r.id]=r; });
+    if(pair){ const l=loc[pair.localCandidateId], r=rem[pair.remoteCandidateId];
+      const lt=l?l.candidateType:'?', rt=r?r.candidateType:'?';
+      $("dPair").innerHTML=`<span class="pill ${lt}">${lt}</span> ↔ <span class="pill ${rt}">${rt}</span>`;
+    }
+  },1200);
+}
+
+async function waitIce(p){
+  if(p.iceGatheringState==='complete')return;
+  await new Promise(res=>{ const to=setTimeout(res,3000);
+    p.addEventListener('icegatheringstatechange',()=>{ if(p.iceGatheringState==='complete'){clearTimeout(to);res();} }); });
+}
+
+// ---- A: 発信 ----
+$("btnOffer").onclick=async()=>{
+  reset(); pc=newPC(); dc=pc.createDataChannel('ping'); wireDC();
+  const o=await pc.createOffer(); await pc.setLocalDescription(o); await waitIce(pc);
+  $("offerOut").value=JSON.stringify(pc.localDescription); setVerdict('wait','コードAを相手に渡してください'); log('コードA生成');
+};
+$("btnConnect").onclick=async()=>{
+  try{ const ans=JSON.parse($("answerIn").value.trim()); await pc.setRemoteDescription(ans); log('コードB受理→接続開始'); }
+  catch(e){ alert('コードBが正しく貼れていません: '+e.message); }
+};
+
+// ---- B: 応答 ----
+$("btnAnswer").onclick=async()=>{
+  try{ reset(); pc=newPC(); const off=JSON.parse($("offerIn").value.trim());
+    await pc.setRemoteDescription(off); const a=await pc.createAnswer(); await pc.setLocalDescription(a); await waitIce(pc);
+    $("answerOut").value=JSON.stringify(pc.localDescription); setVerdict('wait','コードBを発信側へ返してください'); log('コードB生成');
+  }catch(e){ alert('コードAが正しく貼れていません: '+e.message); }
+};
+
+$("copyOffer").onclick=()=>{ $("offerOut").select(); document.execCommand('copy'); };
+$("copyAnswer").onclick=()=>{ $("answerOut").select(); document.execCommand('copy'); };
+$("btnReset").onclick=()=>{ reset(); location.reload(); };
+
+function reset(){
+  try{pc&&pc.close();}catch(e){} pc=null; dc=null; connectedOnce=false; candTypes.clear();
+  if(statsTimer)clearInterval(statsTimer); if(pingTimer)clearInterval(pingTimer);
+  $("dConn").textContent='-'; $("dIce").textContent='-'; $("dPair").textContent='-'; $("dRtt").textContent='-'; renderCands();
+}
+setVerdict('','まだ接続していません');
+</script>
+</body>
+</html>
