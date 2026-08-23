@@ -52,7 +52,7 @@
       <div class="row"><label>曲げ強さ</label><input type="range" id="fingerGain" min="0" max="2" step="0.05" value="1.0"><span class="val" id="fingerGainV">1.00</span></div>
       <div class="row"><label>軸</label><select id="fingerAxis"><option value="x">X（既定）</option><option value="z">Z</option></select>
         <label>指の向き<button id="fingerDir" class="tag" type="button">＋</button></label></div>
-      <div class="row"><label>親指の軸</label><select id="thumbAxis"><option value="x">X</option><option value="z">Z</option><option value="y">Y</option><option value="xz">X+Z</option><option value="xy">X+Y</option><option value="yz">Y+Z</option></select><label>親指の向き<button id="thumbDir" class="tag" type="button">＋</button></label></div>
+      <div class="row"><label>親指<span class="tag">(軸=自動)</span></label><label>向き<button id="thumbDir" class="tag" type="button">＋</button></label><label><input type="checkbox" id="thumbHold"> 固定</label></div>
       <div class="row"><label><input type="checkbox" id="handSwap"> 手の左右入替</label></div>
     </div>
     <div class="sec"><h2>⑤ 腕</h2>
@@ -98,11 +98,11 @@ const targetHead=new THREE.Quaternion(),headRest=new THREE.Quaternion(),headParI
 /* ===== 腕/指 : live_avatar方式を移植 ===== */
 const ARM={}; // bones
 let boneAxis={}, armDefaults={}, armEMA={};
-let fingerBones={}, fingerDefaults={}, fingerQ={};
+let fingerBones={}, fingerDefaults={}, fingerQ={}, thumbFlexAxis={};
 const _v1=new THREE.Vector3(),_v2=new THREE.Vector3(),_qA=new THREE.Quaternion(),_qB=new THREE.Quaternion();
 // 指スペック: [finger, jointNums, weights, stateKey, axisOverride, fingerSign]
 const FSPEC=[
- ['Thumb',[1,2,3],[0.9,1.0,0.9],'thumb','y',-1],
+ ['Thumb',[1,2,3],[0.5,1.1,0.9],'thumb','y',-1],
  ['Index',[1,2,3],[1.7,1.7,1.3],'index',null,1],
  ['Middle',[1,2,3],[1.7,1.7,1.3],'middle',null,1],
  ['Ring',[1,2,3],[1.7,1.7,1.3],'ring',null,1],
@@ -139,9 +139,19 @@ async function loadAvatar(url){
   boneAxis={ leftUpperArm:dirToChild(ARM.leftLowerArm,FX), rightUpperArm:dirToChild(ARM.rightLowerArm,NX), leftLowerArm:dirToChild(ARM.leftHand,FX), rightLowerArm:dirToChild(ARM.rightHand,NX) };
   armDefaults={}; armEMA={}; for(const k of ['leftUpperArm','leftLowerArm','rightUpperArm','rightLowerArm']){ const b=ARM[k]; if(b) armDefaults[k]=b.quaternion.clone(); }
   // fingers (RPM: LeftHand{Finger}{1..3})
-  fingerBones={}; fingerDefaults={}; fingerQ={};
+  fingerBones={}; fingerDefaults={}; fingerQ={}; thumbFlexAxis={};
   for(const side of ['Left','Right']) for(const [f,joints] of FSPEC.map(s=>[s[0],s[1]])) for(const j of joints){
     const nm=side+'Hand'+f+j; const b=byName[nm]; if(b){ fingerBones[side+f+j]=b; fingerDefaults[side+f+j]={x:b.rotation.x,y:b.rotation.y,z:b.rotation.z}; fingerQ[side+f+j]=b.quaternion.clone(); } }
+  // 親指の曲げ軸を手の形状から自動計算（長さ方向 × 手のひら法線）
+  for(const side of ['Left','Right']){
+    const w=byName[side+'Hand'], iM=byName[side+'HandIndex1'], pM=byName[side+'HandPinky1']; let pnW=null;
+    if(w&&iM&&pM){ const wp=w.getWorldPosition(new THREE.Vector3()), ip=iM.getWorldPosition(new THREE.Vector3()), pp=pM.getWorldPosition(new THREE.Vector3()); pnW=new THREE.Vector3().crossVectors(ip.clone().sub(wp), pp.clone().sub(wp)); if(pnW.lengthSq()>1e-10) pnW.normalize(); else pnW=null; }
+    for(const j of [1,2,3]){ const b=byName[side+'HandThumb'+j], c=byName[side+'HandThumb'+(j+1)]; if(!b||!c) continue;
+      const lengthLocal=c.position.clone(); if(lengthLocal.lengthSq()<1e-10) continue; lengthLocal.normalize();
+      let ax=new THREE.Vector3(0,0,1);
+      if(pnW){ b.updateWorldMatrix(true,false); const inv=b.getWorldQuaternion(new THREE.Quaternion()).invert(); const pnL=pnW.clone().applyQuaternion(inv).normalize(); const cr=new THREE.Vector3().crossVectors(lengthLocal,pnL); if(cr.lengthSq()>1e-8) ax=cr.normalize(); }
+      thumbFlexAxis[side+'Thumb'+j]=ax; }
+  }
   if(headBone){ headBone.updateWorldMatrix(true,false); headBone.getWorldQuaternion(headRest); if(headBone.parent){ headBone.parent.getWorldQuaternion(headParInv); headParInv.invert(); } else headParInv.identity(); }
   frameUpper();
 }
@@ -200,16 +210,19 @@ function computeFingerState(pts){
   const palmW=Math.max(0.001,d(pts[5],pts[17]));
   return { thumb:clamp((1-d(pts[4],pts[9])/Math.max(palmW*1.4,0.001))*1.6,0,1), index:curl(5,6,7,8), middle:curl(9,10,11,12), ring:curl(13,14,15,16), little:curl(17,18,19,20) };
 }
-const THUMB_AXES={ x:new THREE.Vector3(1,0,0), y:new THREE.Vector3(0,1,0), z:new THREE.Vector3(0,0,1), xz:new THREE.Vector3(1,0,1).normalize(), xy:new THREE.Vector3(1,1,0).normalize(), yz:new THREE.Vector3(0,1,1).normalize() };
+const THUMB_AXES={ x:new THREE.Vector3(1,0,0), y:new THREE.Vector3(0,1,0), z:new THREE.Vector3(0,0,1),
+  xz:new THREE.Vector3(1,0,1).normalize(), xy:new THREE.Vector3(1,1,0).normalize(), yz:new THREE.Vector3(0,1,1).normalize(),
+  xnz:new THREE.Vector3(1,0,-1).normalize(), xny:new THREE.Vector3(1,-1,0).normalize(), ynz:new THREE.Vector3(0,1,-1).normalize() };
 const _tq=new THREE.Quaternion();
 function applyFingerCurl(Side,state,sign,axis,gain){
   const defAxis = axis==='x'?'x':'z';
-  const tVec=THUMB_AXES[$("thumbAxis").value]||THUMB_AXES.x, tSign=$("thumbDir").dataset.v==='+'?1:-1;
+  const tSign=$("thumbDir").dataset.v==='+'?1:-1, tHold=$("thumbHold").checked;
   for(const [f,joints,weights,key] of FSPEC){
     const isT=f==='Thumb'; const cv=state?.[key]??0;
     if(isT){
-      joints.forEach((j,ji)=>{ const b=fingerBones[Side+f+j], rq=fingerQ[Side+f+j]; if(!b||!rq) return;
-        _tq.setFromAxisAngle(tVec, tSign*cv*weights[ji]*gain);
+      joints.forEach((j,ji)=>{ const b=fingerBones[Side+f+j], rq=fingerQ[Side+f+j], ax=thumbFlexAxis[Side+f+j]; if(!b||!rq) return;
+        if(tHold||!ax){ b.quaternion.slerp(rq,0.3); return; }
+        _tq.setFromAxisAngle(ax, tSign*cv*weights[ji]*gain);
         b.quaternion.slerp(rq.clone().multiply(_tq), 0.3); });
       continue;
     }
