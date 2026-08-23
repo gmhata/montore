@@ -129,7 +129,8 @@
 <script type="importmap">
 { "imports": {
   "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+  "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.js"
 } }
 </script>
 <script src="/firebase-config.js"></script>
@@ -176,6 +177,7 @@ const GAIN = {};
    ['cheekPuff',4.5],['cheekSquintLeft',2.6],['cheekSquintRight',2.6]].forEach(([n,g])=>set(n,g)); })();
 
 let renderer, scene, camera, morphMeshes = [], headNode = null, headBone = null, faceLandmarker = null, avatarRunning = false, lastVideoTime = -1, currentAvatarUrl = null;
+let currentVRM = null, frameHeadBone = null, frameHipsBone = null;   // VRM(VRoid)対応
 const APPLY_HEAD_POSE = true;   // 首の向き・傾きをHeadボーンに反映
 const HEAD_POSE_GAIN = 1.0;     // 首振りの強さ(1.0=等倍)
 // 顔の左右向き(yaw)の符号。'y'キーでその場反転、URL ?yaw=1 / ?yaw=-1 でも指定可。
@@ -207,7 +209,8 @@ const UP_ZOOM = 1.28;
 function frameUpper(rootObj){
   rootObj.updateMatrixWorld(true);
   let head=null, hips=null;
-  rootObj.traverse(o=>{ if(o.isBone){ if(/^Head$/i.test(o.name)) head=o; if(/^Hips$/i.test(o.name)) hips=o; } });
+  if(frameHeadBone) head=frameHeadBone; if(frameHipsBone) hips=frameHipsBone; // VRMは humanoid から
+  if(!head||!hips) rootObj.traverse(o=>{ if(o.isBone){ if(!head&&/(^|:)Head$/i.test(o.name)) head=o; if(!hips&&/(^|:)Hips$/i.test(o.name)) hips=o; } }); // RPM/Mixamo両対応
   const hp = head?head.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,1.5,0);
   const hipP = hips?hips.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,0.9,0);
   const torso=Math.max(0.3, hp.y-hipP.y);
@@ -222,19 +225,28 @@ function frameUpper(rootObj){
 const DEFAULT_AVATAR = "/avatar-f-brunette.glb";
 // キャラは声(persona)とセット。public/ に対応 .glb を置くと差し替わる。無ければ既定にフォールバック。
 // 6種: kd=高齢男性 cd=中年男性 jd=若年男性 kj=高齢女性 cj=中年女性 jj=若年女性
-const PERSONA_AVATAR = { none:DEFAULT_AVATAR, kd:"/avatar-kd.glb", cd:"/avatar-cd.glb", jd:"/avatar-jd.glb", kj:"/avatar-kj.glb", cj:"/avatar-cj.glb", jj:"/avatar-jj.glb" };
+const PERSONA_AVATAR = { none:DEFAULT_AVATAR, kd:"/avatar-kd.vrm", cd:"/avatar-cd.vrm", jd:"/avatar-jd.vrm", kj:"/avatar-kj.vrm", cj:"/avatar-cj.vrm", jj:"/avatar-jj.vrm" };
 function avatarUrlFor(p){ return PERSONA_AVATAR[p] || DEFAULT_AVATAR; }
 async function loadAvatar(url){
+  const isVRM = /\.vrm(\?|$)/i.test(url);
   const ktx2=new KTX2Loader().setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/').detectSupport(renderer);
   const loader=new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
+  if(isVRM){ const { VRMLoaderPlugin } = await import('@pixiv/three-vrm'); loader.register(p=>new VRMLoaderPlugin(p)); }
   const gltf=await loader.loadAsync(url);
   if(headNode){ try{ scene.remove(headNode); }catch(_){}} // 既存アバターを外して差し替え(キャラ切替)
-  scene.add(gltf.scene); headNode=gltf.scene; currentAvatarUrl=url; morphMeshes=[]; headBone=null;
-  gltf.scene.traverse(o=>{ if(o.isBone && /^Head$/i.test(o.name)) headBone=o; });
-  gltf.scene.traverse(o=>{ if(o.isMesh && o.morphTargetDictionary && o.morphTargetInfluences){
-    const ci={}; for(const [k,idx] of Object.entries(o.morphTargetDictionary)) ci[canon(k)]=idx; o.userData.canonIndex=ci; morphMeshes.push(o); } });
-  frameUpper(gltf.scene);
-  captureRig(gltf.scene);
+  const vrm = (gltf.userData && gltf.userData.vrm) ? gltf.userData.vrm : null;
+  const root = vrm ? vrm.scene : gltf.scene;
+  scene.add(root); headNode=root; currentAvatarUrl=url; currentVRM=vrm;
+  morphMeshes=[]; headBone=null; frameHeadBone=null; frameHipsBone=null;
+  if(vrm){
+    setupVRMRig(vrm);            // VRM: 骨は humanoid(normalized)、顔は expression
+  } else {
+    root.traverse(o=>{ if(o.isBone && /(^|:)Head$/i.test(o.name)) headBone=o; }); // RPM/Mixamo両対応
+    root.traverse(o=>{ if(o.isMesh && o.morphTargetDictionary && o.morphTargetInfluences){
+      const ci={}; for(const [k,idx] of Object.entries(o.morphTargetDictionary)) ci[canon(k)]=idx; o.userData.canonIndex=ci; morphMeshes.push(o); } });
+    captureRig(root);
+  }
+  frameUpper(root);
   // 首振り用: Headボーンの静止ワールド姿勢と親の逆姿勢を記録
   if(headBone){
     headBone.updateWorldMatrix(true,false);
@@ -242,19 +254,51 @@ async function loadAvatar(url){
     if(headBone.parent){ headBone.parent.getWorldQuaternion(headParentWorldInv); headParentWorldInv.invert(); }
     else headParentWorldInv.identity();
   }
+  if(vrm) vrm.update(1/30); // 初期反映
 }
-// personaのアバターを読む。対応ファイルが無ければ既定アバターにフォールバック。
+// VRM(VRoid): humanoid(normalized)ボーンを腕・指・首ソルバーに割当て、顔は expression で駆動
+function setupVRMRig(vrm){
+  const H=(r)=>{ try{ return vrm.humanoid.getNormalizedBoneNode(r); }catch(_){ return null; } };
+  vrm.scene.updateMatrixWorld(true);
+  ARM.leftUpperArm=H('leftUpperArm'); ARM.leftLowerArm=H('leftLowerArm'); ARM.leftHand=H('leftHand');
+  ARM.rightUpperArm=H('rightUpperArm'); ARM.rightLowerArm=H('rightLowerArm'); ARM.rightHand=H('rightHand');
+  headBone=H('head'); frameHeadBone=H('head'); frameHipsBone=H('hips');
+  const dc=(child,fb)=>{ if(!child) return fb.clone(); const d=child.position.clone(); return d.lengthSq()<1e-10?fb.clone():d.normalize(); };
+  const FX=new THREE.Vector3(1,0,0), NX=new THREE.Vector3(-1,0,0);
+  boneAxis={ leftUpperArm:dc(ARM.leftLowerArm,FX), rightUpperArm:dc(ARM.rightLowerArm,NX), leftLowerArm:dc(ARM.leftHand,FX), rightLowerArm:dc(ARM.rightHand,NX) };
+  armDefaults={}; euroF={}; armParentWorld={}; armFore={}; armUpDir={}; armVis={};
+  for(const k of ['leftUpperArm','leftLowerArm','rightUpperArm','rightLowerArm']){ const b=ARM[k]; if(b) armDefaults[k]=b.quaternion.clone(); }
+  for(const side of ['left','right']){ const up=ARM[side+'UpperArm']; if(up&&up.parent){ up.parent.updateWorldMatrix(true,false); armParentWorld[side]=up.parent.getWorldQuaternion(new THREE.Quaternion()); } }
+  // 指: FSPEC(Thumb/Index/Middle/Ring/Pinky × 1..3) を VRM humanoid の指ロールへ対応
+  const FING={ Thumb:['ThumbMetacarpal','ThumbProximal','ThumbDistal'], Index:['IndexProximal','IndexIntermediate','IndexDistal'], Middle:['MiddleProximal','MiddleIntermediate','MiddleDistal'], Ring:['RingProximal','RingIntermediate','RingDistal'], Pinky:['LittleProximal','LittleIntermediate','LittleDistal'] };
+  fingerBones={}; fingerDefaults={}; fingerQ={};
+  for(const Side of ['Left','Right']){ const s=Side.toLowerCase();
+    for(const f of ['Thumb','Index','Middle','Ring','Pinky']){ FING[f].forEach((role,i)=>{ const j=i+1; const b=H(s+role); if(b){ fingerBones[Side+f+j]=b; fingerDefaults[Side+f+j]={x:b.rotation.x,y:b.rotation.y,z:b.rotation.z}; fingerQ[Side+f+j]=b.quaternion.clone(); } }); } }
+}
+// VRM表情: MediaPipeのARKit値を VRM expression(blink/aa/happy/ou 等)へ橋渡し
+function vrmFace(cats){
+  const em=currentVRM&&currentVRM.expressionManager; if(!em) return;
+  const g={}; for(const c of cats){ g[c.categoryName]=c.score; }
+  const cl=(v)=>Math.min(1,Math.max(0,v||0));
+  em.setValue('blinkLeft',  cl((g.eyeBlinkLeft||0)*1.2));
+  em.setValue('blinkRight', cl((g.eyeBlinkRight||0)*1.2));
+  em.setValue('aa',   cl((g.jawOpen||0)*1.3));
+  em.setValue('happy',cl((((g.mouthSmileLeft||0)+(g.mouthSmileRight||0))/2)*1.6));
+  em.setValue('ou',   cl((g.mouthPucker||0)*1.1));
+}
+// persona毎に .glb(Avaturn等) → .vrm(VRoid等) → 既定 の順で試す(形式混在OK)
+let currentPersona=null;
+function avatarCandidates(persona){ if(!persona||persona==='none') return [DEFAULT_AVATAR]; return ["/avatar-"+persona+".glb","/avatar-"+persona+".vrm"]; }
 async function loadAvatarFor(persona){
-  const url=avatarUrlFor(persona);
-  try{ await loadAvatar(url); }
-  catch(e){ if(url!==DEFAULT_AVATAR){ console.warn("avatar not found:",url,"→ 既定にフォールバック"); await loadAvatar(DEFAULT_AVATAR); } else throw e; }
+  for(const url of avatarCandidates(persona)){ try{ await loadAvatar(url); currentPersona=persona; return; }catch(e){ console.warn("avatar try failed:",url); } }
+  await loadAvatar(DEFAULT_AVATAR); currentPersona=persona; // どれも無ければ既定
 }
 // 通話中にキャラ(声とセット)を切り替える
 async function switchAvatar(){
   if(!avatarRunning) return;
-  const url=avatarUrlFor($("personaSelect").value);
-  if(url===currentAvatarUrl) return;
-  try{ setStatus("キャラクターを切り替え中…"); await loadAvatarFor($("personaSelect").value); setStatus("キャラクターを切り替えました。"); }
+  const persona=$("personaSelect").value;
+  if(persona===currentPersona) return;
+  try{ setStatus("キャラクターを切り替え中…"); await loadAvatarFor(persona); setStatus("キャラクターを切り替えました。"); }
   catch(e){ setStatus("キャラ切替に失敗: "+((e&&e.message)||e)); }
 }
 async function initFace(){
@@ -269,9 +313,10 @@ function applyResults(res){
   dbgFace = (res.faceBlendshapes && res.faceBlendshapes.length)?1:0;
   if(res.faceBlendshapes && res.faceBlendshapes.length){
     const cats=res.faceBlendshapes[0].categories;
-    for(const m of morphMeshes){ const ci=m.userData.canonIndex, inf=m.morphTargetInfluences;
+    if(currentVRM){ vrmFace(cats); }   // VRM: expression 駆動
+    else { for(const m of morphMeshes){ const ci=m.userData.canonIndex, inf=m.morphTargetInfluences; // RPM: ARKit morph
       for(const c of cats){ if(c.categoryName==='_neutral') continue; const cn=canon(c.categoryName); const idx=ci[cn];
-        if(idx!==undefined){ const g=GAIN[cn]; inf[idx]=g?Math.min(1,Math.max(0,c.score-FLOOR)*g):c.score; } } }
+        if(idx!==undefined){ const g=GAIN[cn]; inf[idx]=g?Math.min(1,Math.max(0,c.score-FLOOR)*g):c.score; } } } }
   }
   if(res.facialTransformationMatrixes && res.facialTransformationMatrixes.length){
     const m=new THREE.Matrix4().fromArray(res.facialTransformationMatrixes[0].data);
@@ -291,7 +336,7 @@ let lastRigT=performance.now();
 let lastDetMs=0;   // 認識の実行間隔を約22fpsに間引き(3モデル同時の過負荷でハンド検出が落ちるのを防ぐ)
 let dbgFace=0, dbgPose=0, dbgHands=0;               // 検出状況(?debug=1 のときコンソール出力)
 let lastLogMs=0;
-const BUILD="2026-08-23-j";                          // ビルド識別子(コンソールで反映確認)
+const BUILD="2026-08-23-m";                          // ビルド識別子(コンソールで反映確認)
 const DEBUG = new URLSearchParams(location.search).get('debug')==='1';
 try{ console.log("PeerMontore build:", BUILD, DEBUG?"(debug)":""); }catch(_){}
 function ef(key,val,t){ let f=euroF[key]; if(!f){ f=new OneEuro(); euroF[key]=f; } return f.filter(val,t); }
@@ -305,7 +350,8 @@ const _av2=new THREE.Vector3();
 async function initPose(fileset){ const o={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate:'GPU' }, runningMode:'VIDEO', numPoses:1 }; try{ poseLandmarker=await PoseLandmarker.createFromOptions(fileset,o); }catch(e){ o.baseOptions.delegate='CPU'; poseLandmarker=await PoseLandmarker.createFromOptions(fileset,o); } }
 async function initHands(fileset){ const o={ baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task', delegate:'GPU' }, runningMode:'VIDEO', numHands:2 }; try{ handLandmarker=await HandLandmarker.createFromOptions(fileset,o); }catch(e){ o.baseOptions.delegate='CPU'; handLandmarker=await HandLandmarker.createFromOptions(fileset,o); } }
 function captureRig(rootObj){
-  const byName={}; rootObj.traverse(o=>{ if(o.isBone) byName[o.name]=o; });
+  // RPM(Wolf3D)/Mixamo 両対応: 骨名は基本名で引けるよう、接頭辞 mixamorig: を除いた別名も登録
+  const byName={}; rootObj.traverse(o=>{ if(o.isBone){ byName[o.name]=o; const base=o.name.replace(/^mixamorig[:_]?/i,''); if(base && base!==o.name && !byName[base]) byName[base]=o; } });
   ARM.leftUpperArm=byName['LeftArm']; ARM.leftLowerArm=byName['LeftForeArm']; ARM.leftHand=byName['LeftHand'];
   ARM.rightUpperArm=byName['RightArm']; ARM.rightLowerArm=byName['RightForeArm']; ARM.rightHand=byName['RightHand'];
   const dc=(child,fb)=>{ if(!child) return fb.clone(); const d=child.position.clone(); return d.lengthSq()<1e-10?fb.clone():d.normalize(); };
@@ -424,6 +470,7 @@ function processFrame(ds){
   }
   updateArmsSmooth(dt);
   if(APPLY_HEAD_POSE && headBone){ _wd.copy(targetHeadWorld).multiply(headWorldRest); _ld.copy(headParentWorldInv).multiply(_wd); headBone.quaternion.slerp(_ld, 0.35); }
+  if(currentVRM){ try{ currentVRM.update(dt); }catch(_){} }   // VRM: normalized→raw反映＋表情/springbone
   if(DEBUG && (nowMs-lastLogMs)>2000){ lastLogMs=nowMs; try{ console.log("det 顔:"+dbgFace+" 腕:"+dbgPose+" 手:"+dbgHands+" 指骨:"+Object.keys(fingerBones).length+" proc:"+(useProc?1:0)); }catch(_){} }
   renderer.render(scene, camera);
   // 送信用に1フレーム明示要求(captureStream(0))。合成に依存せず全画面/非表示でも送れる
