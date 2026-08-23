@@ -253,7 +253,7 @@ function applyResults(res){
   if(res.facialTransformationMatrixes && res.facialTransformationMatrixes.length){
     const m=new THREE.Matrix4().fromArray(res.facialTransformationMatrixes[0].data);
     const p=new THREE.Vector3(), s=new THREE.Vector3(), q=new THREE.Quaternion(); m.decompose(p,q,s);
-    const eu=new THREE.Euler().setFromQuaternion(q,'YXZ'); eu.y*=-1; targetHeadWorld.setFromEuler(eu);
+    const eu=new THREE.Euler().setFromQuaternion(q,'YXZ'); targetHeadWorld.setFromEuler(eu); // yawは反転しない(顔の向きを実物と一致)
   }
 }
 // ===== 手・腕・指トラッキング(MediaPipe) : dance_mocap方式(One Euro + 時間ベースslerp)を移植 =====
@@ -357,6 +357,7 @@ async function pumpFrames(){
     if(r.done) break; const frame=r.value;
     try{ if(procCanvas.width!==frame.displayWidth||procCanvas.height!==frame.displayHeight){ procCanvas.width=frame.displayWidth; procCanvas.height=frame.displayHeight; } procCtx.drawImage(frame,0,0); procHasFrame=true; }catch(e){}
     try{ frame.close(); }catch(e){}
+    if(avatarRunning && procHasFrame){ try{ processFrame(procCanvas); }catch(e){} }  // フレーム駆動: 全画面/非表示でも止まらない
   }
 }
 async function startFrameSource(track){
@@ -376,13 +377,10 @@ async function startFrameSource(track){
   $("camVideo").srcObject=new MediaStream([track]); try{ await $("camVideo").play(); }catch(e){}
   return false;
 }
-function avatarLoop(){
-  if(!avatarRunning) return; requestAnimationFrame(avatarLoop);
+// 1フレーム分の処理(認識→腕/首の追従→描画)。rAFにもフレーム駆動(pumpFrames)にも使う。
+function processFrame(ds){
   const nowMs=performance.now(); const dt=Math.min((nowMs-lastRigT)/1000, 0.1); lastRigT=nowMs;
-  let ds=null, dsReady=false;
-  if(useProc){ if(procHasFrame){ ds=procCanvas; dsReady=true; } }
-  else { const v=$("camVideo"); if(v && v.readyState>=2 && v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; ds=v; dsReady=true; } }
-  if(dsReady){
+  if(ds){
     if(faceLandmarker){ try{ applyResults(faceLandmarker.detectForVideo(ds, nowMs)); }catch(e){} }
     if(poseLandmarker){ try{ applyArms(poseLandmarker.detectForVideo(ds, nowMs+0.3), nowMs/1000); }catch(e){} }
     if(handLandmarker){ try{ applyHands(handLandmarker.detectForVideo(ds, nowMs+0.6)); }catch(e){} }
@@ -390,6 +388,14 @@ function avatarLoop(){
   updateArmsSmooth(dt);
   if(APPLY_HEAD_POSE && headBone){ _wd.copy(targetHeadWorld).multiply(headWorldRest); _ld.copy(headParentWorldInv).multiply(_wd); headBone.quaternion.slerp(_ld, 0.35); }
   renderer.render(scene, camera);
+}
+// procパスは pumpFrames がフレーム駆動するのでrAFは描画しない。フォールバック(video)時のみrAFで駆動。
+function avatarLoop(){
+  if(!avatarRunning) return; requestAnimationFrame(avatarLoop);
+  if(useProc) return;
+  const v=$("camVideo"); let ds=null;
+  if(v && v.readyState>=2 && v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; ds=v; }
+  processFrame(ds);
 }
 
 // ===== 声変換(患者役) =====
