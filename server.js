@@ -3681,7 +3681,7 @@ app.post("/api/peer/heartbeat", requireAuth, async (req, res) => {
     const room = String(req.body?.room || "").trim();
     const role = String(req.body?.role || "").trim();
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(room)) return res.status(400).json({ error: "bad room" });
-    if (!["patient", "nurse"].includes(role)) return res.status(400).json({ error: "bad role" });
+    if (!["patient", "nurse", "waiting"].includes(role)) return res.status(400).json({ error: "bad role" });
     await db.collection("peerPresence").doc(req.user.uid).set({
       room, uid: req.user.uid, role, name: peerDisplayName(req.user), ts: Date.now(),
     });
@@ -3697,7 +3697,7 @@ app.post("/api/peer/leave", requireAuth, async (req, res) => {
 });
 
 // ロビー用: 各ルームの在室者(名前・役割)を返す
-app.get("/api/peer/rooms", requireAuth, async (_req, res) => {
+app.get("/api/peer/rooms", requireAuth, async (req, res) => {
   try {
     const rooms = {};
     if (db) {
@@ -3705,6 +3705,7 @@ app.get("/api/peer/rooms", requireAuth, async (_req, res) => {
       const now = Date.now();
       snap.forEach((d) => {
         const v = d.data() || {};
+        if (req.user && d.id === req.user.uid) return; // 自分自身は在室一覧に含めない
         if (!v.room || !v.ts || (now - v.ts) > PEER_PRESENCE_TTL_MS) return;
         (rooms[v.room] = rooms[v.room] || []).push({ role: v.role || "", name: v.name || "" });
       });

@@ -70,6 +70,7 @@
     </div>
 
     <div class="panel hidden" id="rolePanel">
+      <div id="loginUser" style="font-size:12px;color:#9d5b7e;margin-bottom:8px;"></div>
       <div style="font-weight:700;font-size:16px;">役割を選んでください</div>
       <div id="roomOcc" style="font-size:13px;margin:10px 0 2px;padding:9px 12px;border-radius:8px;background:#fff0f7;color:#9d174d;">在室状況を確認中…</div>
       <div class="rolepick">
@@ -493,6 +494,14 @@ window.addEventListener("pagehide", ()=>{ stopHeartbeat(); });
 
 // ===== 役割選択画面の在室状況(このルームに誰が入っているか)を表示 =====
 let occTimer=null;
+// 役割を決める前でも「待機中(waiting)」として在室を送り、同室の相手と同期する
+async function waitingBeat(){
+  if(!auth.currentUser || joined) return;
+  try{ const idToken=await getIdToken(auth.currentUser);
+    await fetch("/api/peer/heartbeat",{ method:"POST", headers:{ "Content-Type":"application/json","Authorization":"Bearer "+idToken }, body:JSON.stringify({ room:roomRaw, role:"waiting" }) });
+  }catch(e){}
+}
+const roleJa=(r)=> r==="nurse"?"看護師役": r==="patient"?"患者役": r==="waiting"?"入室準備中":"?";
 async function pollRoomOcc(){
   if(!auth.currentUser || joined) return;
   try{
@@ -500,16 +509,17 @@ async function pollRoomOcc(){
     const r=await fetch("/api/peer/rooms",{ headers:{ "Authorization":"Bearer "+idToken } });
     if(!r.ok) return;
     const data=await r.json();
-    const members=(data.rooms&&data.rooms[roomRaw])||[];
+    const members=(data.rooms&&data.rooms[roomRaw])||[];   // サーバ側で自分は除外済み
     const el=$("roomOcc"); if(!el) return;
     if(members.length===0){ el.textContent="このルームにはまだ相手がいません（入室すると相手を待ちます）。"; el.style.background="#fff0f7"; el.style.color="#9d174d"; }
     else{
-      const names=members.map(m=>(uname(m.name||"")||"参加者")+"（"+(m.role==="nurse"?"看護師役":m.role==="patient"?"患者役":"?")+"）").join(" / ");
-      el.textContent="このルームに入室中: "+names; el.style.background="#e0f7ec"; el.style.color="#0f766e";
+      const names=members.map(m=>(uname(m.name||"")||"参加者")+"（"+roleJa(m.role)+"）").join(" / ");
+      el.textContent="このルームの相手: "+names; el.style.background="#e0f7ec"; el.style.color="#0f766e";
     }
   }catch(e){}
 }
-function startRoomOcc(){ const el=$("roomOcc"); if(el) el.textContent="在室状況を確認中…"; pollRoomOcc(); if(!occTimer) occTimer=setInterval(pollRoomOcc,4000); }
+async function occTick(){ waitingBeat(); pollRoomOcc(); }
+function startRoomOcc(){ const el=$("roomOcc"); if(el) el.textContent="在室状況を確認中…"; occTick(); if(!occTimer) occTimer=setInterval(occTick,4000); }
 function stopRoomOcc(){ if(occTimer){ clearInterval(occTimer); occTimer=null; } }
 
 // ===== 画面制御 =====
@@ -536,6 +546,7 @@ function showCall(role){
 // ===== 役割開始 =====
 async function startRole(role){
   ROLE = role;
+  stopRoomOcc();   // 役割を決めたら待機同期は停止(以降は本役割のハートビート)
   $("pickNurse").disabled=true; $("pickPatient").disabled=true;
   try{
     setStatus2("カメラ・マイクを取得中...");
@@ -592,8 +603,12 @@ async function startRole(role){
     setStatus("入室しました"+note+"。"+(others?("相手は入室済みです"+who+"。"):"相手の入室を待っています..."));
   }catch(e){
     console.error(e);
-    setStatus2("エラー: "+(e&&e.message?e.message:e));
+    const raw=(e&&e.message)?e.message:String(e);
+    const camBusy=(e&&e.name==='NotReadableError')||/could not start video source|in use|reserved|notreadable/i.test(raw);
+    setStatus2(camBusy ? "カメラを開始できませんでした。他のタブやアプリ（Zoom・Teams・別の練習タブ等）がカメラを使用していないか確認し、閉じてから再度お試しください。" : ("エラー: "+raw));
+    stopFrameSource();
     ROLE=null; $("pickNurse").disabled=false; $("pickPatient").disabled=false;
+    showRoleSelection();
   }
 }
 
@@ -622,6 +637,7 @@ $("pickPatient").addEventListener("click", ()=> startRole("patient"));
 // ===== 起動 =====
 onAuthStateChanged(auth, (user)=>{
   if(user){
+    $("loginUser").textContent = "ログイン中: " + (uname(user.email)||user.email||"");
     // UE版は管理者アカウントのみ
     $("ueRow").classList.toggle("hidden", (user.email||"").toLowerCase()!==ADMIN_EMAIL);
     $("loginPanel").classList.add("hidden");

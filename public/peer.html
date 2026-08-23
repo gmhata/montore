@@ -42,7 +42,8 @@
 <body>
 <header>
   <h1>ピア練習</h1>
-  <a class="menubtn" href="/index.html">← メニューへ戻る</a>
+  <span id="who" style="font-size:12px;opacity:.95;"></span>
+  <a class="menubtn" href="/index.html" style="margin-left:auto;">← メニューへ戻る</a>
 </header>
 <main>
   <div class="card">
@@ -85,7 +86,7 @@ for (let i = 1; i <= ROOM_COUNT; i++) {
   roomsEl.appendChild(d);
 }
 
-function roleMark(r){ return r === "nurse" ? "看" : (r === "patient" ? "患" : "?"); }
+function roleMark(r){ return r === "nurse" ? "看" : (r === "patient" ? "患" : (r === "waiting" ? "準" : "?")); }
 
 function renderRooms() {
   for (let i = 1; i <= ROOM_COUNT; i++) {
@@ -142,6 +143,7 @@ async function pollRooms() {
 
 onAuthStateChanged(auth, (user) => {
   if (user) {
+    $("who").textContent = "ログイン中: " + ((user.email||"").split("@")[0] || user.email || "");
     $("authmsg").style.display = "none";
     pollRooms();
     if (!pollTimer) pollTimer = setInterval(pollRooms, 4000);
