@@ -71,6 +71,7 @@
 
     <div class="panel hidden" id="rolePanel">
       <div style="font-weight:700;font-size:16px;">役割を選んでください</div>
+      <div id="roomOcc" style="font-size:13px;margin:10px 0 2px;padding:9px 12px;border-radius:8px;background:#fff0f7;color:#9d174d;">在室状況を確認中…</div>
       <div class="rolepick">
         <button class="rolebtn" id="pickNurse">看護師役</button>
         <button class="rolebtn" id="pickPatient">患者役</button>
@@ -478,14 +479,37 @@ function startHeartbeat(){ peerHeartbeat(); if(!hbTimer) hbTimer=setInterval(pee
 async function stopHeartbeat(){ if(hbTimer){clearInterval(hbTimer);hbTimer=null;} if(auth.currentUser){ try{ const idToken=await getIdToken(auth.currentUser); await fetch("/api/peer/leave",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+idToken},body:JSON.stringify({room:roomRaw}),keepalive:true}); }catch(e){} } }
 window.addEventListener("pagehide", ()=>{ stopHeartbeat(); });
 
+// ===== 役割選択画面の在室状況(このルームに誰が入っているか)を表示 =====
+let occTimer=null;
+async function pollRoomOcc(){
+  if(!auth.currentUser || joined) return;
+  try{
+    const idToken=await getIdToken(auth.currentUser);
+    const r=await fetch("/api/peer/rooms",{ headers:{ "Authorization":"Bearer "+idToken } });
+    if(!r.ok) return;
+    const data=await r.json();
+    const members=(data.rooms&&data.rooms[roomRaw])||[];
+    const el=$("roomOcc"); if(!el) return;
+    if(members.length===0){ el.textContent="このルームにはまだ相手がいません（入室すると相手を待ちます）。"; el.style.background="#fff0f7"; el.style.color="#9d174d"; }
+    else{
+      const names=members.map(m=>(uname(m.name||"")||"参加者")+"（"+(m.role==="nurse"?"看護師役":m.role==="patient"?"患者役":"?")+"）").join(" / ");
+      el.textContent="このルームに入室中: "+names; el.style.background="#e0f7ec"; el.style.color="#0f766e";
+    }
+  }catch(e){}
+}
+function startRoomOcc(){ const el=$("roomOcc"); if(el) el.textContent="在室状況を確認中…"; pollRoomOcc(); if(!occTimer) occTimer=setInterval(pollRoomOcc,4000); }
+function stopRoomOcc(){ if(occTimer){ clearInterval(occTimer); occTimer=null; } }
+
 // ===== 画面制御 =====
 function showRoleSelection(){
   $("preCall").classList.remove("hidden");
   $("rolePanel").classList.remove("hidden");
   $("callView").classList.add("hidden");
   $("roleLabel").classList.add("hidden");
+  startRoomOcc();
 }
 function showCall(role){
+  stopRoomOcc();
   $("preCall").classList.add("hidden");
   $("rolePanel").classList.add("hidden");
   $("callView").classList.remove("hidden");
@@ -591,6 +615,7 @@ onAuthStateChanged(auth, (user)=>{
     showRoleSelection();
     setupCameras();
   } else {
+    stopRoomOcc();
     $("loginPanel").classList.remove("hidden");
     $("loginMsg").innerHTML = 'montoreにログインが必要です。<a href="/index.html">メニューからログイン</a>してから、ロビー経由で開いてください。';
     $("rolePanel").classList.add("hidden");
