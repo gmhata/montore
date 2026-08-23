@@ -57,7 +57,7 @@
 </head>
 <body>
 <header>
-  <h1>PeerMontore 練習</h1>
+  <h1>練習</h1>
   <span class="room" id="roomLabel">ルーム—</span>
   <span class="role hidden" id="roleLabel"></span>
   <a class="menubtn" href="/index.html">← メニューへ戻る</a>
@@ -120,7 +120,8 @@
     </section>
   </div>
 
-  <video id="camVideo" class="hidden" autoplay playsinline muted></video>
+  <!-- 認識用の入力映像。display:none だと拡大表示等でデコードが止まりアバターが停止するため、表示は保ったまま不可視化 -->
+  <video id="camVideo" autoplay playsinline muted style="position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:-1;"></video>
 </main>
 
 <script type="importmap">
@@ -205,7 +206,7 @@ function frameUpper(rootObj){
   const hp = head?head.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,1.5,0);
   const hipP = hips?hips.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,0.9,0);
   const torso=Math.max(0.3, hp.y-hipP.y);
-  const center=hp.clone(); center.y += torso*0.02; // 頭上に少し余白を残しつつ上寄せ
+  const center=hp.clone(); center.y += torso*0.07; // 頭上に隙間(約1cm)を空けて少し下げる
   const half=torso*0.40; // 頭〜上胸まで(顔を大きく)
   const dist=half/Math.tan((camera.fov*Math.PI/180)/2);
   camera.position.set(center.x, center.y, center.z+dist);
@@ -255,12 +256,20 @@ function applyResults(res){
     const eu=new THREE.Euler().setFromQuaternion(q,'YXZ'); eu.y*=-1; targetHeadWorld.setFromEuler(eu);
   }
 }
-// ===== 手・腕・指トラッキング(MediaPipe) : avatar-lab確定方式を移植 =====
+// ===== 手・腕・指トラッキング(MediaPipe) : dance_mocap方式(One Euro + 時間ベースslerp)を移植 =====
 let poseLandmarker=null, handLandmarker=null;
-const ARM_EMA=0.06, ARM_SLERP=0.5;                                    // 確定: なめらかさ・腕入替OFF
+// One Euroフィルタ: 静止時のブレを抑えつつ、速い動きにはほぼ遅延なく追従する適応ローパス
+class OneEuro{ constructor(minCutoff=1.2,beta=0.5,dCutoff=1.0){ this.mc=minCutoff; this.beta=beta; this.dc=dCutoff; this.prev=null; this.dprev=0; this.tprev=0; }
+  static a(c,dt){ const tau=1/(2*Math.PI*c); return 1/(1+tau/dt); }
+  filter(v,t){ if(this.prev===null){ this.prev=v; this.dprev=0; this.tprev=t; return v; } const dt=Math.max(t-this.tprev,1e-3); this.tprev=t; const d=(v-this.prev)/dt; const ad=OneEuro.a(this.dc,dt); const sd=ad*d+(1-ad)*this.dprev; this.dprev=sd; const c=this.mc+this.beta*Math.abs(sd); const a=OneEuro.a(c,dt); const s=a*v+(1-a)*this.prev; this.prev=s; return s; } }
+const ARM_K=14;                        // 腕の追従速度[1/s] (時間ベースslerp: t=1-exp(-k*dt) でフレームレート非依存)
+let euroF={}, armParentWorld={}, armTarget={};
+let lastRigT=performance.now();
+function ef(key,val,t){ let f=euroF[key]; if(!f){ f=new OneEuro(); euroF[key]=f; } return f.filter(val,t); }
+function fpt(prefix,p,t){ return { x:ef(prefix+'x',p.x,t), y:ef(prefix+'y',p.y,t), z:ef(prefix+'z',p.z,t) }; }
 const FINGER_AXIS='x', FINGER_SIGN=1, FINGER_GAIN=1.1, THUMB_HOLD=true; // 確定: 指軸X・向き+・親指固定
 const FSPEC=[ ['Thumb',[1,2,3],[0.5,1.1,0.9],'thumb'], ['Index',[1,2,3],[1.7,1.7,1.3],'index'], ['Middle',[1,2,3],[1.7,1.7,1.3],'middle'], ['Ring',[1,2,3],[1.7,1.7,1.3],'ring'], ['Pinky',[1,2,3],[1.6,1.6,1.2],'little'] ];
-const ARM={}; let boneAxis={}, armDefaults={}, armEMA={};
+const ARM={}; let boneAxis={}, armDefaults={};
 let fingerBones={}, fingerDefaults={}, fingerQ={}, thumbFlexAxis={};
 const _q1=new THREE.Quaternion(),_q2=new THREE.Quaternion();
 const _av2=new THREE.Vector3();
@@ -273,7 +282,9 @@ function captureRig(rootObj){
   const dc=(child,fb)=>{ if(!child) return fb.clone(); const d=child.position.clone(); return d.lengthSq()<1e-10?fb.clone():d.normalize(); };
   const FX=new THREE.Vector3(1,0,0), NX=new THREE.Vector3(-1,0,0);
   boneAxis={ leftUpperArm:dc(ARM.leftLowerArm,FX), rightUpperArm:dc(ARM.rightLowerArm,NX), leftLowerArm:dc(ARM.leftHand,FX), rightLowerArm:dc(ARM.rightHand,NX) };
-  armDefaults={}; armEMA={}; for(const k of ['leftUpperArm','leftLowerArm','rightUpperArm','rightLowerArm']){ const b=ARM[k]; if(b) armDefaults[k]=b.quaternion.clone(); }
+  armDefaults={}; armTarget={}; euroF={}; armParentWorld={};
+  for(const k of ['leftUpperArm','leftLowerArm','rightUpperArm','rightLowerArm']){ const b=ARM[k]; if(b){ armDefaults[k]=b.quaternion.clone(); armTarget[k]=b.quaternion.clone(); } }
+  for(const side of ['left','right']){ const up=ARM[side+'UpperArm']; if(up&&up.parent){ up.parent.updateWorldMatrix(true,false); armParentWorld[side]=up.parent.getWorldQuaternion(new THREE.Quaternion()); } }
   fingerBones={}; fingerDefaults={}; fingerQ={}; thumbFlexAxis={};
   for(const side of ['Left','Right']) for(const sp of FSPEC) for(const j of sp[1]){ const b=byName[side+'Hand'+sp[0]+j]; if(b){ fingerBones[side+sp[0]+j]=b; fingerDefaults[side+sp[0]+j]={x:b.rotation.x,y:b.rotation.y,z:b.rotation.z}; fingerQ[side+sp[0]+j]=b.quaternion.clone(); } }
   for(const side of ['Left','Right']){ const w=byName[side+'Hand'], iM=byName[side+'HandIndex1'], pM=byName[side+'HandPinky1']; let pnW=null;
@@ -284,17 +295,40 @@ const _KNEE=0.25,_CAP=0.40;
 function shapeWorldDir(v){ if(v.z<0){ v.z=0; return v; } let z=v.z; if(z>_KNEE){ const over=z-_KNEE,range=_CAP-_KNEE; z=_KNEE+range*(1-1/(1+over/range)); } v.z=z; return v; }
 function poseDirToWorld(from,to,out){ out.set(to.x-from.x, -(to.y-from.y), -(to.z-from.z)); return out; }
 function aimBone(bone,defDir,worldDir,smooth){ if(!bone||!bone.parent) return; const len=worldDir.length(); if(len<1e-5) return; bone.parent.updateWorldMatrix(true,false); bone.parent.getWorldQuaternion(_q1); _q1.invert(); _av2.copy(worldDir).divideScalar(len).applyQuaternion(_q1); _q2.setFromUnitVectors(defDir,_av2); bone.quaternion.slerp(_q2,smooth); }
-function emaP(key,p,a){ let s=armEMA[key]; if(!s){ armEMA[key]={x:p.x,y:p.y,z:p.z}; return armEMA[key]; } s.x+=(p.x-s.x)*a; s.y+=(p.y-s.y)*a; s.z+=(p.z-s.z)*a; return s; }
-function applyArms(res){
+const _pw=new THREE.Quaternion(), _uw=new THREE.Quaternion(), _dir=new THREE.Vector3();
+// ある関節の「親フレーム内での目標ローカル回転」を返す(見えていなければnull)
+function armTargetFor(boneKey, parentWorld, from, to){
+  poseDirToWorld(from,to,_dir); shapeWorldDir(_dir);
+  if(_dir.lengthSq()<1e-8) return null;
+  _dir.normalize().applyQuaternion(_pw.copy(parentWorld).invert());
+  return new THREE.Quaternion().setFromUnitVectors(boneAxis[boneKey], _dir);
+}
+// 検出時: 各腕ボーンの「目標ローカル回転」を計算して貯める(実適用はupdateArmsSmoothで時間ベースに)
+function applyArms(res, tSec){
   const L=res.landmarks&&res.landmarks[0]; if(!L) return;
   const map={left:[11,13,15],right:[12,14,16]};
   for(const side of ['left','right']){
-    const sI=map[side][0],eI=map[side][1],wI=map[side][2]; const up=ARM[side+'UpperArm'], lo=ARM[side+'LowerArm']; if(!up||!lo) continue;
-    if((L[sI].visibility==null?1:L[sI].visibility)<0.3){ if(armDefaults[side+'UpperArm']) up.quaternion.slerp(armDefaults[side+'UpperArm'],0.1); if(armDefaults[side+'LowerArm']) lo.quaternion.slerp(armDefaults[side+'LowerArm'],0.1); continue; }
-    const sh=emaP(side+'s',L[sI],ARM_EMA), el=emaP(side+'e',L[eI],ARM_EMA), wr=emaP(side+'w',L[wI],ARM_EMA);
-    aimBone(up, boneAxis[side+'UpperArm'], shapeWorldDir(poseDirToWorld(sh,el,new THREE.Vector3())), ARM_SLERP); up.updateWorldMatrix(true,true);
-    aimBone(lo, boneAxis[side+'LowerArm'], shapeWorldDir(poseDirToWorld(el,wr,new THREE.Vector3())), ARM_SLERP); lo.updateWorldMatrix(true,false);
+    const sI=map[side][0],eI=map[side][1],wI=map[side][2];
+    const upKey=side+'UpperArm', loKey=side+'LowerArm';
+    const up=ARM[upKey], lo=ARM[loKey]; if(!up||!lo) continue;
+    const vis=(L[sI].visibility==null?1:L[sI].visibility);
+    const eVis=(L[eI].visibility==null?1:L[eI].visibility);
+    if(vis<0.3){ if(armDefaults[upKey]) armTarget[upKey].copy(armDefaults[upKey]); if(armDefaults[loKey]) armTarget[loKey].copy(armDefaults[loKey]); continue; }
+    const sh=fpt(side+'s',L[sI],tSec), el=fpt(side+'e',L[eI],tSec), wr=fpt(side+'w',L[wI],tSec);
+    const parentW=armParentWorld[side]||(up.parent?up.parent.getWorldQuaternion(new THREE.Quaternion()):new THREE.Quaternion());
+    const upT=armTargetFor(upKey, parentW, sh, el);
+    if(upT) armTarget[upKey].copy(upT);
+    if(eVis>=0.3){
+      _uw.copy(parentW).multiply(armTarget[upKey]);         // 前腕の親=上腕の目標ワールド回転
+      const loT=armTargetFor(loKey, _uw, el, wr);
+      if(loT) armTarget[loKey].copy(loT);
+    } else if(armDefaults[loKey]) armTarget[loKey].copy(armDefaults[loKey]);
   }
+}
+// 毎フレーム: 目標へ時間ベースで滑らかに追従(フレームレート非依存)
+function updateArmsSmooth(dt){
+  const t=1-Math.exp(-ARM_K*Math.max(dt,1e-3));
+  for(const k of ['leftUpperArm','leftLowerArm','rightUpperArm','rightLowerArm']){ const b=ARM[k]; if(b&&armTarget[k]) b.quaternion.slerp(armTarget[k], t); }
 }
 function computeFingerState(pts){ if(!pts||pts.length<21) return null; const d=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y); const curl=(m,pp,dp,t)=>{ const ext=d(pts[m],pts[pp])+d(pts[pp],pts[dp])+d(pts[dp],pts[t]); return Math.max(0,Math.min(1,(1-d(pts[m],pts[t])/Math.max(ext*0.8,0.001))*3.0)); }; return { index:curl(5,6,7,8), middle:curl(9,10,11,12), ring:curl(13,14,15,16), little:curl(17,18,19,20) }; }
 function applyFingerCurl(Side,state){
@@ -316,12 +350,14 @@ function applyHands(res){
 }
 function avatarLoop(){
   if(!avatarRunning) return; requestAnimationFrame(avatarLoop);
+  const nowMs=performance.now(); const dt=Math.min((nowMs-lastRigT)/1000, 0.1); lastRigT=nowMs;
   const v=$("camVideo");
-  if(v && v.readyState>=2 && v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; const _ts=performance.now();
+  if(v && v.readyState>=2 && v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; const _ts=nowMs;
     if(faceLandmarker){ try{ applyResults(faceLandmarker.detectForVideo(v, _ts)); }catch(e){} }
-    if(poseLandmarker){ try{ applyArms(poseLandmarker.detectForVideo(v, _ts+0.3)); }catch(e){} }
+    if(poseLandmarker){ try{ applyArms(poseLandmarker.detectForVideo(v, _ts+0.3), nowMs/1000); }catch(e){} }
     if(handLandmarker){ try{ applyHands(handLandmarker.detectForVideo(v, _ts+0.6)); }catch(e){} }
   }
+  updateArmsSmooth(dt);
   if(APPLY_HEAD_POSE && headBone){ _wd.copy(targetHeadWorld).multiply(headWorldRest); _ld.copy(headParentWorldInv).multiply(_wd); headBone.quaternion.slerp(_ld, 0.35); }
   renderer.render(scene, camera);
 }
