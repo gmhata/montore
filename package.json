@@ -1,6 +1,6 @@
 {
   "name": "montore",
-  "version": "4.70.0",
+  "version": "6.0.0",
   "private": true,
   "type": "module",
   "engines": {
