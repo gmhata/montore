@@ -73,7 +73,7 @@
       <div style="font-weight:700;font-size:16px;">役割を選んでください</div>
       <div class="rolepick">
         <button class="rolebtn" id="pickNurse">看護師役</button>
-        <button class="rolebtn" id="pickPatient">患者役(Web)</button>
+        <button class="rolebtn" id="pickPatient">患者役</button>
       </div>
       <div class="uerow hidden" id="ueRow">UE版（先生のデモ用）: <a id="ueLink" href="#">こちら</a></div>
       <div id="status2"></div>
@@ -406,7 +406,7 @@ function showCall(role){
   $("rolePanel").classList.add("hidden");
   $("callView").classList.remove("hidden");
   $("roleLabel").classList.remove("hidden");
-  $("roleLabel").textContent = role==="nurse" ? "看護師役" : "患者役(Web)";
+  $("roleLabel").textContent = role==="nurse" ? "看護師役" : "患者役";
   $("patientSettings").classList.toggle("hidden", role!=="patient");
   $("avatarBox").classList.toggle("hidden", role!=="patient");
   const ph=$("stagePlaceholder"); if(ph) ph.classList.remove("hidden");
