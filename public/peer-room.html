@@ -124,8 +124,6 @@
 
   <!-- 認識用の入力映像。display:none だと拡大表示等でデコードが止まりアバターが停止するため、表示は保ったまま不可視化 -->
   <video id="camVideo" autoplay playsinline muted style="position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:-1;"></video>
-  <!-- デバッグ表示(dキーで表示/非表示): 顔/腕/手の検出数・指骨数・ビルド -->
-  <div id="dbg" style="position:fixed;left:6px;bottom:6px;z-index:99999;background:rgba(0,0,0,.72);color:#7CFC00;font:12px/1.5 monospace;padding:4px 8px;border-radius:6px;display:none;white-space:pre;"></div>
 </main>
 
 <script type="importmap">
@@ -274,10 +272,11 @@ const ARM_K=14;                        // 腕の追従速度[1/s] (時間ベー�
 let euroF={}, armParentWorld={}, armFore={}, armUpDir={}, armVis={};
 let lastRigT=performance.now();
 let lastDetMs=0;   // 認識の実行間隔を約22fpsに間引き(3モデル同時の過負荷でハンド検出が落ちるのを防ぐ)
-let dbgFace=0, dbgPose=0, dbgHands=0;               // デバッグ表示('d'キー)用の検出状況
-const BUILD="2026-08-23-h";                          // ビルド識別子(コンソール/HUDで反映確認)
-try{ console.log("PeerMontore build:", BUILD); }catch(_){}
-window.addEventListener('keydown',(e)=>{ if(e.key==='d'||e.key==='D'){ const el=document.getElementById('dbg'); if(el) el.style.display = (el.style.display==='none'||!el.style.display)?'block':'none'; } });
+let dbgFace=0, dbgPose=0, dbgHands=0;               // 検出状況(?debug=1 のときコンソール出力)
+let lastLogMs=0;
+const BUILD="2026-08-23-i";                          // ビルド識別子(コンソールで反映確認)
+const DEBUG = new URLSearchParams(location.search).get('debug')==='1';
+try{ console.log("PeerMontore build:", BUILD, DEBUG?"(debug)":""); }catch(_){}
 function ef(key,val,t){ let f=euroF[key]; if(!f){ f=new OneEuro(); euroF[key]=f; } return f.filter(val,t); }
 function fpt(prefix,p,t){ return { x:ef(prefix+'x',p.x,t), y:ef(prefix+'y',p.y,t), z:ef(prefix+'z',p.z,t) }; }
 const FINGER_AXIS='x', FINGER_SIGN=1, FINGER_GAIN=1.1, THUMB_HOLD=true; // 確定: 指軸X・向き+・親指固定
@@ -408,7 +407,7 @@ function processFrame(ds){
   }
   updateArmsSmooth(dt);
   if(APPLY_HEAD_POSE && headBone){ _wd.copy(targetHeadWorld).multiply(headWorldRest); _ld.copy(headParentWorldInv).multiply(_wd); headBone.quaternion.slerp(_ld, 0.35); }
-  const _dbg=$("dbg"); if(_dbg && _dbg.style.display==='block'){ _dbg.textContent="顔:"+dbgFace+"  腕:"+dbgPose+"  手:"+dbgHands+"\n指骨:"+Object.keys(fingerBones).length+"  proc:"+(useProc?1:0)+"\nbuild "+BUILD; }
+  if(DEBUG && (nowMs-lastLogMs)>2000){ lastLogMs=nowMs; try{ console.log("det 顔:"+dbgFace+" 腕:"+dbgPose+" 手:"+dbgHands+" 指骨:"+Object.keys(fingerBones).length+" proc:"+(useProc?1:0)); }catch(_){} }
   renderer.render(scene, camera);
   // 送信用に1フレーム明示要求(captureStream(0))。合成に依存せず全画面/非表示でも送れる
   if(canvasStream){ const _vt=canvasStream.getVideoTracks()[0]; if(_vt&&_vt.requestFrame) _vt.requestFrame(); }
