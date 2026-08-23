@@ -93,9 +93,9 @@
       <div class="patientonly hidden" id="patientSettings">
         <div class="po-title">🩺 患者役の設定</div>
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <label>患者の声(ペルソナ):
+          <label>患者キャラクター（声＋見た目）:
             <select id="personaSelect">
-              <option value="none">なし(原声)</option>
+              <option value="none">標準（原声）</option>
               <option value="kd">高齢男性</option><option value="cd">中年男性</option><option value="jd">若年男性</option>
               <option value="kj">高齢女性</option><option value="cj">中年女性</option><option value="jj">若年女性</option>
             </select>
@@ -175,7 +175,7 @@ const GAIN = {};
    ['eyeSquintLeft',2.4],['eyeSquintRight',2.4],['eyeWideLeft',2.4],['eyeWideRight',2.4],
    ['cheekPuff',4.5],['cheekSquintLeft',2.6],['cheekSquintRight',2.6]].forEach(([n,g])=>set(n,g)); })();
 
-let renderer, scene, camera, morphMeshes = [], headNode = null, headBone = null, faceLandmarker = null, avatarRunning = false, lastVideoTime = -1;
+let renderer, scene, camera, morphMeshes = [], headNode = null, headBone = null, faceLandmarker = null, avatarRunning = false, lastVideoTime = -1, currentAvatarUrl = null;
 const APPLY_HEAD_POSE = true;   // 首の向き・傾きをHeadボーンに反映
 const HEAD_POSE_GAIN = 1.0;     // 首振りの強さ(1.0=等倍)
 // 顔の左右向き(yaw)の符号。'y'キーでその場反転、URL ?yaw=1 / ?yaw=-1 でも指定可。
@@ -220,13 +220,16 @@ function frameUpper(rootObj){
 }
 // ===== ペルソナ→リアルアバター(自ホスト同一オリジンGLB) =====
 const DEFAULT_AVATAR = "/avatar-f-brunette.glb";
-const PERSONA_AVATAR = { none:DEFAULT_AVATAR, kd:DEFAULT_AVATAR, cd:DEFAULT_AVATAR, jd:DEFAULT_AVATAR, kj:DEFAULT_AVATAR, cj:DEFAULT_AVATAR, jj:DEFAULT_AVATAR };
+// キャラは声(persona)とセット。public/ に対応 .glb を置くと差し替わる。無ければ既定にフォールバック。
+// 6種: kd=高齢男性 cd=中年男性 jd=若年男性 kj=高齢女性 cj=中年女性 jj=若年女性
+const PERSONA_AVATAR = { none:DEFAULT_AVATAR, kd:"/avatar-kd.glb", cd:"/avatar-cd.glb", jd:"/avatar-jd.glb", kj:"/avatar-kj.glb", cj:"/avatar-cj.glb", jj:"/avatar-jj.glb" };
 function avatarUrlFor(p){ return PERSONA_AVATAR[p] || DEFAULT_AVATAR; }
 async function loadAvatar(url){
   const ktx2=new KTX2Loader().setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/').detectSupport(renderer);
   const loader=new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
   const gltf=await loader.loadAsync(url);
-  scene.add(gltf.scene); headNode=gltf.scene; morphMeshes=[]; headBone=null;
+  if(headNode){ try{ scene.remove(headNode); }catch(_){}} // 既存アバターを外して差し替え(キャラ切替)
+  scene.add(gltf.scene); headNode=gltf.scene; currentAvatarUrl=url; morphMeshes=[]; headBone=null;
   gltf.scene.traverse(o=>{ if(o.isBone && /^Head$/i.test(o.name)) headBone=o; });
   gltf.scene.traverse(o=>{ if(o.isMesh && o.morphTargetDictionary && o.morphTargetInfluences){
     const ci={}; for(const [k,idx] of Object.entries(o.morphTargetDictionary)) ci[canon(k)]=idx; o.userData.canonIndex=ci; morphMeshes.push(o); } });
@@ -239,6 +242,20 @@ async function loadAvatar(url){
     if(headBone.parent){ headBone.parent.getWorldQuaternion(headParentWorldInv); headParentWorldInv.invert(); }
     else headParentWorldInv.identity();
   }
+}
+// personaのアバターを読む。対応ファイルが無ければ既定アバターにフォールバック。
+async function loadAvatarFor(persona){
+  const url=avatarUrlFor(persona);
+  try{ await loadAvatar(url); }
+  catch(e){ if(url!==DEFAULT_AVATAR){ console.warn("avatar not found:",url,"→ 既定にフォールバック"); await loadAvatar(DEFAULT_AVATAR); } else throw e; }
+}
+// 通話中にキャラ(声とセット)を切り替える
+async function switchAvatar(){
+  if(!avatarRunning) return;
+  const url=avatarUrlFor($("personaSelect").value);
+  if(url===currentAvatarUrl) return;
+  try{ setStatus("キャラクターを切り替え中…"); await loadAvatarFor($("personaSelect").value); setStatus("キャラクターを切り替えました。"); }
+  catch(e){ setStatus("キャラ切替に失敗: "+((e&&e.message)||e)); }
 }
 async function initFace(){
   const fileset=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
@@ -274,7 +291,7 @@ let lastRigT=performance.now();
 let lastDetMs=0;   // 認識の実行間隔を約22fpsに間引き(3モデル同時の過負荷でハンド検出が落ちるのを防ぐ)
 let dbgFace=0, dbgPose=0, dbgHands=0;               // 検出状況(?debug=1 のときコンソール出力)
 let lastLogMs=0;
-const BUILD="2026-08-23-i";                          // ビルド識別子(コンソールで反映確認)
+const BUILD="2026-08-23-j";                          // ビルド識別子(コンソールで反映確認)
 const DEBUG = new URLSearchParams(location.search).get('debug')==='1';
 try{ console.log("PeerMontore build:", BUILD, DEBUG?"(debug)":""); }catch(_){}
 function ef(key,val,t){ let f=euroF[key]; if(!f){ f=new OneEuro(); euroF[key]=f; } return f.filter(val,t); }
@@ -429,7 +446,7 @@ function applyVoice(){
   voice.setVoice(semi, ft);
 }
 function presetFromPersona(){ const pre=PERSONAS[$("personaSelect").value]||PERSONAS.none; $("pitchRange").value=pre.p; $("formantRange").value=pre.f; applyVoice(); }
-$("personaSelect").addEventListener("change", presetFromPersona);
+$("personaSelect").addEventListener("change", ()=>{ presetFromPersona(); switchAvatar(); }); // 声とキャラをセットで切替
 $("pitchRange").addEventListener("input", applyVoice);
 $("formantRange").addEventListener("input", applyVoice);
 
@@ -567,8 +584,7 @@ async function startRole(role){
       $("localVideo").srcObject=new MediaStream([camTrack]); // 自分の映像(生カメラ・表示用)
       await startFrameSource(camTrack.clone());              // 認識用(全画面/拡大でも止まらない)
       setStatus2("リアルアバターと表情認識を準備中...(初回は少し時間がかかります)");
-      const avUrl = avatarUrlFor($("personaSelect").value);
-      initThree(); await loadAvatar(avUrl); await initFace(); avatarRunning=true; avatarLoop();
+      initThree(); await loadAvatarFor($("personaSelect").value); await initFace(); avatarRunning=true; avatarLoop();
       const micStream=new MediaStream(camStream.getAudioTracks());
       audioTrack=await voice.start(micStream); applyVoice();
       canvasStream=$("avatarCanvas").captureStream(0); // 0=手動。processFrameでrequestFrame(全画面/非表示でも送信継続)
