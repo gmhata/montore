@@ -142,6 +142,8 @@ import { getAuth, onAuthStateChanged, getIdToken } from "https://www.gstatic.com
 import { VoiceConverter, PERSONAS } from '/peer-voice.js';
 
 const $ = (id) => document.getElementById(id);
+// 表示名: メールアドレスはユーザー名(＠より前)に置換して表示
+const uname = (s) => String(s||"").replace(/([A-Za-z0-9._%+-]+)@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "$1");
 const setStatus = (m) => { const e=$("statusSb"); if(e) e.textContent=m; };
 const setStatus2 = (m) => { const e=$("status2"); if(e) e.textContent=m; };
 
@@ -203,8 +205,8 @@ function frameUpper(rootObj){
   const hp = head?head.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,1.5,0);
   const hipP = hips?hips.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(0,0.9,0);
   const torso=Math.max(0.3, hp.y-hipP.y);
-  const center=hp.clone(); center.y -= torso*0.05; // 頭を上寄せ(頭上の余白を減らす)
-  const half=torso*0.50; // 肩〜上腕まで入る引き(腕のしぐさが見える)
+  const center=hp.clone(); center.y += torso*0.02; // 頭上に少し余白を残しつつ上寄せ
+  const half=torso*0.40; // 頭〜上胸まで(顔を大きく)
   const dist=half/Math.tan((camera.fov*Math.PI/180)/2);
   camera.position.set(center.x, center.y, center.z+dist);
   camera.near=Math.max(dist/100,0.01); camera.far=dist*100; camera.updateProjectionMatrix();
@@ -452,7 +454,7 @@ async function startRole(role){
     const { url, token }=await fetchToken(roomRaw, role);
     lkRoom=new LivekitClient.Room({ adaptiveStream:true, dynacast:true });
     lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,(t)=>attachRemoteTrack(t));
-    lkRoom.on(LivekitClient.RoomEvent.ParticipantConnected,(p)=>{ setStatus("相手が入室しました: "+(p.name||p.identity||"")); });
+    lkRoom.on(LivekitClient.RoomEvent.ParticipantConnected,(p)=>{ setStatus("相手が入室しました: "+uname(p.name||p.identity)); });
     lkRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected,()=>{ setStatus("相手が退室しました。"); const ph=$("stagePlaceholder"); if(ph) ph.classList.remove("hidden"); });
     lkRoom.on(LivekitClient.RoomEvent.Disconnected,()=>setStatus("切断されました。"));
     await lkRoom.connect(url, token);
@@ -464,7 +466,7 @@ async function startRole(role){
     const rp = lkRoom.remoteParticipants ? Array.from(lkRoom.remoteParticipants.values())[0] : null;
     const others=lkRoom.remoteParticipants?lkRoom.remoteParticipants.size:0;
     const note = receiveOnly ? "(受信専用)" : "";
-    const who = rp ? (": "+(rp.name||rp.identity||"")) : "";
+    const who = rp ? (": "+uname(rp.name||rp.identity)) : "";
     setStatus("入室しました"+note+"。"+(others?("相手は入室済みです"+who+"。"):"相手の入室を待っています..."));
   }catch(e){
     console.error(e);
