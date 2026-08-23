@@ -245,7 +245,7 @@ function applyResults(res){
 }
 // ===== 手・腕・指トラッキング(MediaPipe) : avatar-lab確定方式を移植 =====
 let poseLandmarker=null, handLandmarker=null;
-const ARM_EMA=0.12, ARM_SLERP=0.5;                                    // 確定: なめらかさ0.12・腕入替OFF
+const ARM_EMA=0.06, ARM_SLERP=0.5;                                    // 確定: なめらかさ0.12・腕入替OFF
 const FINGER_AXIS='x', FINGER_SIGN=1, FINGER_GAIN=1.1, THUMB_HOLD=true; // 確定: 指軸X・向き+・親指固定
 const FSPEC=[ ['Thumb',[1,2,3],[0.5,1.1,0.9],'thumb'], ['Index',[1,2,3],[1.7,1.7,1.3],'index'], ['Middle',[1,2,3],[1.7,1.7,1.3],'middle'], ['Ring',[1,2,3],[1.7,1.7,1.3],'ring'], ['Pinky',[1,2,3],[1.6,1.6,1.2],'little'] ];
 const ARM={}; let boneAxis={}, armDefaults={}, armEMA={};
@@ -299,16 +299,19 @@ function applyHands(res){
   const L=res.landmarks; if(!L||!L.length) return; const hd=res.handednesses||res.handedness;
   for(let k=0;k<L.length;k++){ const lbl=(hd&&hd[k]&&hd[k][0])?hd[k][0].categoryName:'Right'; const side=(lbl==='Left')?'Left':'Right'; applyFingerCurl(side, computeFingerState(L[k])); }
 }
+let _dbgF=0,_dbgP=0,_dbgH=0,_dbgErr='';
+function _trkdbg(){ let d=document.getElementById('trkDbg'); if(!d){ d=document.createElement('div'); d.id='trkDbg'; d.style.cssText='position:fixed;left:6px;bottom:6px;z-index:9999;background:rgba(0,0,0,.62);color:#9fe6b0;font:11px monospace;padding:4px 7px;border-radius:5px'; document.body.appendChild(d); }
+  d.textContent='face:'+(faceLandmarker?1:0)+' pose:'+(poseLandmarker?1:0)+' hand:'+(handLandmarker?1:0)+'  F'+_dbgF+' P'+_dbgP+' H'+_dbgH+(_dbgErr?(' ERR:'+_dbgErr):''); }
 function avatarLoop(){
   if(!avatarRunning) return; requestAnimationFrame(avatarLoop);
   const v=$("camVideo");
   if(v && v.readyState>=2 && v.currentTime!==lastVideoTime){ lastVideoTime=v.currentTime; const _ts=performance.now();
-    if(faceLandmarker){ try{ applyResults(faceLandmarker.detectForVideo(v, _ts)); }catch(e){} }
-    if(poseLandmarker){ try{ applyArms(poseLandmarker.detectForVideo(v, _ts+0.3)); }catch(e){} }
-    if(handLandmarker){ try{ applyHands(handLandmarker.detectForVideo(v, _ts+0.6)); }catch(e){} }
+    if(faceLandmarker){ try{ applyResults(faceLandmarker.detectForVideo(v, _ts)); _dbgF++; }catch(e){} }
+    if(poseLandmarker){ try{ applyArms(poseLandmarker.detectForVideo(v, _ts+0.3)); _dbgP++; }catch(e){ _dbgErr=String(e.message||e); } }
+    if(handLandmarker){ try{ applyHands(handLandmarker.detectForVideo(v, _ts+0.6)); _dbgH++; }catch(e){ _dbgErr=String(e.message||e); } }
   }
   if(APPLY_HEAD_POSE && headBone){ _wd.copy(targetHeadWorld).multiply(headWorldRest); _ld.copy(headParentWorldInv).multiply(_wd); headBone.quaternion.slerp(_ld, 0.35); }
-  renderer.render(scene, camera);
+  _trkdbg(); renderer.render(scene, camera);
 }
 
 // ===== 声変換(患者役) =====
