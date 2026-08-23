@@ -9,7 +9,8 @@
   body { font-family: "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; background: #fdf2f8; color: #3b1e33; min-height: 100vh; }
   header { background: linear-gradient(90deg,#ec4899,#db2777); color: #fff; padding: 14px 22px; display: flex; align-items: center; gap: 12px; }
   header h1 { font-size: 18px; font-weight: 700; }
-  header a { margin-left: auto; color: #fff; font-size: 13px; text-decoration: none; opacity: .9; }
+  header a.menubtn { margin-left: auto; background:#fff; color:#be185d; border-radius:8px; padding:7px 14px; font-size:13px; font-weight:700; text-decoration:none; }
+  header a.menubtn:hover { background:#fff0f6; }
   main { max-width: 900px; margin: 0 auto; padding: 24px 20px; }
   .card { background: #fff; border-radius: 14px; padding: 22px; box-shadow: 0 2px 10px rgba(219,39,119,.10); margin-bottom: 18px; }
   h2 { font-size: 16px; margin-bottom: 6px; color:#9d174d; }
@@ -41,8 +42,7 @@
 <body>
 <header>
   <h1>PeerMontore ピア練習</h1>
-  <span id="who" style="font-size:12px;opacity:.9;"></span>
-  <a href="/index.html">← メニューに戻る</a>
+  <a class="menubtn" href="/index.html">← メニューへ戻る</a>
 </header>
 <main>
   <div class="card">
@@ -57,7 +57,6 @@
     <h2>② 練習画面へ進む</h2>
     <div class="step">ルームを選んだら練習画面へ進みます。役割（看護師役／患者役）は練習画面で選べ、同じルームのまま「役割を交代」もできます。</div>
     <button id="goRoom" disabled style="width:100%;padding:16px;border:none;border-radius:12px;font-size:16px;font-weight:700;color:#fff;background:#ec4899;cursor:pointer;">練習画面へ進む →</button>
-    <div class="note">看護師役はそのままのあなた、患者役はWebカメラの表情がアバターになります（UE不要）。UE版（先生のデモ用）は練習画面内のリンクから使えます。</div>
   </div>
 </main>
 
@@ -143,7 +142,6 @@ async function pollRooms() {
 
 onAuthStateChanged(auth, (user) => {
   if (user) {
-    $("who").textContent = user.email || "";
     $("authmsg").style.display = "none";
     pollRooms();
     if (!pollTimer) pollTimer = setInterval(pollRooms, 4000);

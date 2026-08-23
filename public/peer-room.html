@@ -8,13 +8,13 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
-  body { font-family: "Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif; background: #f4f6f8; color: #263238; display:flex; flex-direction:column; min-height:100vh; }
-  header { background: #4527a0; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-wrap:wrap; flex:0 0 auto; }
-  header h1 { font-size: 18px; font-weight: 600; }
-  header .room { background: rgba(255,255,255,.2); border-radius: 6px; padding: 3px 12px; font-size: 14px; font-weight:700; }
-  header .role { background: #ec4899; border-radius: 6px; padding: 3px 12px; font-size: 13px; }
-  header .sp { margin-left:auto; font-size:13px; }
-  header a { color:#fff; font-size:13px; text-decoration:none; opacity:.9; }
+  body { font-family: "Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif; background: #fdf2f8; color: #263238; display:flex; flex-direction:column; min-height:100vh; }
+  header { background: linear-gradient(90deg,#ec4899,#db2777); color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-wrap:wrap; flex:0 0 auto; }
+  header h1 { font-size: 18px; font-weight: 700; }
+  header .room { background: rgba(255,255,255,.22); border-radius: 6px; padding: 3px 12px; font-size: 14px; font-weight:700; }
+  header .role { background: #fff; color:#be185d; border-radius: 6px; padding: 3px 12px; font-size: 13px; font-weight:700; }
+  header .menubtn { margin-left:auto; background:#fff; color:#be185d; border-radius:8px; padding:7px 14px; font-size:13px; font-weight:700; text-decoration:none; }
+  header .menubtn:hover { background:#fff0f6; }
   main { flex:1 1 auto; display:flex; flex-direction:column; min-height:0; }
   /* ログイン/役割選択は中央寄せの狭い枠 */
   .centerwrap { max-width: 720px; width:100%; margin:0 auto; padding:24px 16px; }
@@ -22,11 +22,11 @@
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   label { font-size: 14px; }
   select { padding: 7px 10px; border: 1px solid #b0bec5; border-radius: 6px; font-size: 14px; }
-  button { padding: 10px 18px; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; background: #4527a0; color: #fff; }
+  button { padding: 10px 18px; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; background: #ec4899; color: #fff; }
   button:hover { filter: brightness(1.08); } button:disabled { background: #b0bec5; cursor: default; }
   .rolepick { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:14px; }
-  .rolebtn { padding:22px 12px; font-size:18px; font-weight:700; border-radius:12px; background:#4527a0; color:#fff; border:none; cursor:pointer; }
-  .rolebtn:hover { filter:brightness(1.08); }
+  .rolebtn { padding:22px 12px; font-size:18px; font-weight:700; border-radius:12px; background:#fff; color:#be185d; border:2px solid #f5c6e0; cursor:pointer; }
+  .rolebtn:hover { border-color:#ec4899; box-shadow:0 4px 14px rgba(236,72,153,.18); }
   .uerow { font-size:13px; color:#6b2b52; margin-top:16px; }
   #status2 { font-size:13px; color:#607d8b; margin-top:12px; white-space:pre-wrap; }
 
@@ -45,8 +45,8 @@
   .b-secondary:hover { background:#fff0f6; }
   .sblabel { font-size:13px; color:#455a64; margin-top:2px; }
   .sbbox { width:100%; aspect-ratio:16/9; background:#0f1216; border-radius:8px; overflow:hidden; flex:0 0 auto; }
+  .sbbox.avatar { aspect-ratio:4/3; } /* 送信映像(アバター)は高さを広げて大きく表示=送信エリアをそのまま映す */
   .sbbox video, .sbbox canvas { width:100%; height:100%; object-fit:cover; background:#0f1216; display:block; }
-  .sbbox.avatar canvas { transform:scale(1.28); transform-origin:50% 60%; } /* 表示のみ拡大(送信映像は不変)で頭上の余白を詰める */
   #statusSb { font-size:12px; color:#607d8b; white-space:pre-wrap; }
 
   /* 患者役専用ブロック */
@@ -61,8 +61,7 @@
   <h1>PeerMontore 練習</h1>
   <span class="room" id="roomLabel">ルーム—</span>
   <span class="role hidden" id="roleLabel"></span>
-  <span class="sp" id="userinfo"></span>
-  <a href="/peer.html">← ロビー</a>
+  <a class="menubtn" href="/index.html">← メニューへ戻る</a>
 </header>
 <main>
   <!-- ログイン待ち / 役割選択 (中央寄せ) -->
@@ -499,7 +498,6 @@ $("pickPatient").addEventListener("click", ()=> startRole("patient"));
 // ===== 起動 =====
 onAuthStateChanged(auth, (user)=>{
   if(user){
-    $("userinfo").textContent=user.email||"";
     // UE版は管理者アカウントのみ
     $("ueRow").classList.toggle("hidden", (user.email||"").toLowerCase()!==ADMIN_EMAIL);
     $("loginPanel").classList.add("hidden");
